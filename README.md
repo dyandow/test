@@ -30,3 +30,9 @@ booking URL: `foreupsoftware.com/index.php/booking/<course_id>/<schedule_id>`.
 DRY_RUN=1 python -m teetimes.check      # prints instead of notifying
 python -m unittest                       # run the tests
 ```
+
+## Testing that it works
+
+**Actions → Tee time watcher → Run workflow**, tick **Test mode**, then **Run workflow**.
+This ignores the 1:10 PM cutoff and sends whatever is open right now (titled "TEST"), straight from GitHub.
+It doesn't change what the regular watcher remembers.

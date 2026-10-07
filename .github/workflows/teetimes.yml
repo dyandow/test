@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/8 * * * *"   # every 8 minutes (GitHub may run it a few minutes late)
   workflow_dispatch:         # lets you run it by hand from the Actions tab
+    inputs:
+      test:
+        description: "Test mode: ignore the 1:10 PM cutoff and send whatever is open now"
+        type: boolean
+        default: false
 
 concurrency:
   group: teetimes
@@ -31,10 +36,11 @@ jobs:
       - name: Check tee times
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TEST_MODE: ${{ inputs.test && '1' || '' }}
         run: python -m teetimes.check
 
       - name: Save state
-        if: always()
+        if: always() && !inputs.test
         uses: actions/cache/save@v4
         with:
           path: state.json
