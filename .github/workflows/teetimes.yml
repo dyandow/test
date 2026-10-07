@@ -1,0 +1,41 @@
+name: Tee time watcher
+
+on:
+  schedule:
+    - cron: "*/8 * * * *"   # every 8 minutes (GitHub may run it a few minutes late)
+  workflow_dispatch:         # lets you run it by hand from the Actions tab
+
+concurrency:
+  group: teetimes
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # state.json remembers which tee times were already alerted, between runs.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: teetimes-state-${{ github.run_id }}
+          restore-keys: teetimes-state-
+
+      - name: Check tee times
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python -m teetimes.check
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: teetimes-state-${{ github.run_id }}
