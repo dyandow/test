@@ -1,7 +1,10 @@
 {
   "timezone": "America/New_York",
-  "days_ahead": 14,
-  "weekdays": ["Saturday", "Sunday"],
+  "days_ahead": 8,
+  "weekdays": [
+    "Saturday",
+    "Sunday"
+  ],
   "latest_time": "13:10",
   "min_players": 2,
   "courses": [
@@ -10,8 +13,9 @@
       "platform": "foreup",
       "course_id": 22528,
       "schedule_id": 11078,
-      "booking_class": null,
-      "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11078#/teetimes"
+      "booking_class": 49771,
+      "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11078#/teetimes",
+      "booking_class_name": "Non-Cardholders"
     }
   ]
 }

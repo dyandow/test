@@ -4,7 +4,7 @@ Checks golf course tee sheets every 8 minutes and sends a push notification (via
 when a new tee time opens that matches your rules.
 
 **Current rules** (edit `teetimes/config.json`):
-- Saturdays and Sundays, up to 14 days out
+- Saturdays and Sundays, up to 8 days out (the Non-Cardholder booking window)
 - Tee times at or before 1:10 PM (Eastern)
 - At least 2 open spots
 - Courses: Francis Byrne (ForeUP)
