@@ -5,6 +5,7 @@ Env:  NTFY_TOPIC  (required to send; without it, alerts are only printed)
       STATE_FILE  (default: state.json) - remembers what was already alerted
       DRY_RUN=1   print alerts instead of sending them
       TEST_MODE=1 ignore the time cutoff and past alerts, so whatever is open now gets sent
+      BOOKER_URL  (optional) the confirmation page; adds "Book" buttons to alerts
 """
 
 import json
@@ -101,10 +102,23 @@ def build_message(new_slots):
     return "\n".join(lines)
 
 
-def send_ntfy(topic, title, message, click_url=None):
+def book_actions(slots, booker_url, limit=3):
+    """ntfy action buttons (max 3) that open the booking confirmation page for the earliest slots."""
+    buttons = []
+    for slot in sorted(slots, key=lambda s: s["when"])[:limit]:
+        when = slot["when"]
+        query = urllib.parse.urlencode({"d": f"{when:%Y-%m-%d}", "t": f"{when:%H:%M}", "s": slot["spots"]})
+        label = f"Book {when:%a} {when.strftime('%I:%M%p').lstrip('0').lower()}"
+        buttons.append(f"view, {label}, {booker_url.rstrip('/')}/?{query}")
+    return "; ".join(buttons)
+
+
+def send_ntfy(topic, title, message, click_url=None, actions=None):
     headers = {"Title": title.encode("utf-8"), "Tags": "golf", "Priority": "high"}
     if click_url:
         headers["Click"] = click_url
+    if actions:
+        headers["Actions"] = actions
     req = urllib.request.Request(
         f"https://ntfy.sh/{topic}", data=message.encode("utf-8"), headers=headers, method="POST"
     )
@@ -171,10 +185,13 @@ def main():
             title = "TEST (any time of day): " + title
         message = build_message(new_slots)
         click = config["courses"][0]["booking_url"] if len(config["courses"]) == 1 else None
+        bookable = {c["name"] for c in config["courses"] if c.get("auto_book")}
+        booker_url = os.environ.get("BOOKER_URL")
+        actions = book_actions([s for s in new_slots if s["course"] in bookable], booker_url) if booker_url else None
         if dry_run:
-            print(f"\n[dry run] {title}\n{message}")
+            print(f"\n[dry run] {title}\n{message}\n[buttons] {actions}")
         else:
-            send_ntfy(topic, title, message, click)
+            send_ntfy(topic, title, message, click, actions)
             print(f"Sent notification for {len(new_slots)} tee time(s).")
     elif test_mode and not dry_run:
         send_ntfy(topic, "TEST: watcher is working", "Nothing with 2+ spots is open on the next weekend right now.")

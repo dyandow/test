@@ -15,7 +15,8 @@
       "schedule_id": 11078,
       "booking_class": 49771,
       "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11078#/teetimes",
-      "booking_class_name": "Non-Cardholders"
+      "booking_class_name": "Non-Cardholders",
+      "auto_book": true
     }
   ]
 }

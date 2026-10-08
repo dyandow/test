@@ -1,0 +1,59 @@
+name: Book tee time
+
+on:
+  workflow_dispatch:   # started by the confirmation page (or by hand from the Actions tab)
+    inputs:
+      date:
+        description: "Date (YYYY-MM-DD)"
+        required: true
+      time:
+        description: "Tee time, 24-hour (e.g. 07:40 or 13:04)"
+        required: true
+      players:
+        description: "Number of players"
+        required: true
+        type: choice
+        options: ["1", "2", "3", "4"]
+        default: "2"
+      practice:
+        description: "Practice run: stop right before paying (nothing is charged)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: booking
+  cancel-in-progress: false
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: booker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install browser
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Book
+        env:
+          BOOK_DATE: ${{ inputs.date }}
+          BOOK_TIME: ${{ inputs.time }}
+          BOOK_PLAYERS: ${{ inputs.players }}
+          DRY_RUN: ${{ inputs.practice && '1' || '' }}
+          FOREUP_EMAIL: ${{ secrets.FOREUP_EMAIL }}
+          FOREUP_PASSWORD: ${{ secrets.FOREUP_PASSWORD }}
+          CARD_NUMBER: ${{ secrets.CARD_NUMBER }}
+          CARD_EXP: ${{ secrets.CARD_EXP }}
+          CARD_CVC: ${{ secrets.CARD_CVC }}
+          CARD_ZIP: ${{ secrets.CARD_ZIP }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: node book.js

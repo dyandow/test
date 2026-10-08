@@ -43,6 +43,17 @@ class FilterTests(unittest.TestCase):
         self.assertEqual(msg, "Sat Oct 10 · 7:40 AM · 3 spots")
 
 
+class ButtonTests(unittest.TestCase):
+    def test_book_buttons_link_to_confirmation_page(self):
+        slots = [{"course": "Byrne", "when": datetime(2026, 10, 10, h, 4), "spots": 3} for h in (13, 7, 9, 8)]
+        actions = check.book_actions(slots, "https://book.example.workers.dev/")
+        self.assertEqual(actions.split("; "), [
+            "view, Book Sat 7:04am, https://book.example.workers.dev/?d=2026-10-10&t=07%3A04&s=3",
+            "view, Book Sat 8:04am, https://book.example.workers.dev/?d=2026-10-10&t=08%3A04&s=3",
+            "view, Book Sat 9:04am, https://book.example.workers.dev/?d=2026-10-10&t=09%3A04&s=3",
+        ])
+
+
 class RunTests(unittest.TestCase):
     def run_main(self, raw_by_date, state_file):
         def fake_fetch(course, day):

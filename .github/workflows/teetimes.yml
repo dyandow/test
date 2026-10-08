@@ -36,6 +36,7 @@ jobs:
       - name: Check tee times
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          BOOKER_URL: ${{ vars.BOOKER_URL }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
         run: python -m teetimes.check
 
