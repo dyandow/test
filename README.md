@@ -7,7 +7,7 @@ when a new tee time opens that matches your rules.
 - Saturdays and Sundays, up to 8 days out (the Non-Cardholder booking window)
 - Tee times at or before 1:10 PM (Eastern)
 - At least 2 open spots
-- Courses: Francis Byrne (ForeUP)
+- Courses: Francis Byrne and Weequahic (ForeUP, Non-Cardholder rate)
 
 Each notification lists the day, time and number of open spots. Tapping it opens the booking page.
 The first run sends one summary of everything currently open; after that you only hear about new openings.

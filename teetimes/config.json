@@ -17,6 +17,15 @@
       "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11078#/teetimes",
       "booking_class_name": "Non-Cardholders",
       "auto_book": true
+    },
+    {
+      "name": "Weequahic",
+      "platform": "foreup",
+      "course_id": 22528,
+      "schedule_id": 11077,
+      "booking_class": 49424,
+      "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11077#/teetimes",
+      "booking_class_name": "Non-Cardholders"
     }
   ]
 }

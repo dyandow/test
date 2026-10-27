@@ -180,11 +180,14 @@ def main():
     new_slots = [s for k, s in current.items() if s and k not in (previously_seen or set())]
 
     if new_slots:
+        courses = sorted({s["course"] for s in new_slots})
         title = "Tee times currently open" if first_run else f"{len(new_slots)} new tee time(s) open!"
+        title += f" ({', '.join(courses)})"
         if test_mode:
             title = "TEST (any time of day): " + title
         message = build_message(new_slots)
-        click = config["courses"][0]["booking_url"] if len(config["courses"]) == 1 else None
+        urls = {c["name"]: c["booking_url"] for c in config["courses"]}
+        click = urls[courses[0]] if len(courses) == 1 else None
         bookable = {c["name"] for c in config["courses"] if c.get("auto_book")}
         booker_url = os.environ.get("BOOKER_URL")
         actions = book_actions([s for s in new_slots if s["course"] in bookable], booker_url) if booker_url else None
