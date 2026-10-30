@@ -28,10 +28,10 @@ def http_get_json(url, headers=None):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def target_dates(config, today):
+def target_dates(config, today, days_ahead=None):
     """Every date in the next `days_ahead` days that falls on a wanted weekday."""
     wanted = {WEEKDAY_NAMES.index(d) for d in config["weekdays"]}
-    days = range(config["days_ahead"] + 1)
+    days = range((days_ahead or config["days_ahead"]) + 1)
     return [today + timedelta(n) for n in days if (today + timedelta(n)).weekday() in wanted]
 
 
@@ -59,7 +59,7 @@ def fetch_foreup(course, day):
     return data
 
 
-def parse_foreup(raw):
+def parse_foreup(raw, course):
     """Normalize ForeUP entries to (datetime, open_spots)."""
     slots = []
     for entry in raw:
@@ -68,7 +68,42 @@ def parse_foreup(raw):
     return slots
 
 
-PLATFORMS = {"foreup": (fetch_foreup, parse_foreup)}
+# --- TeeItUp (Kenna) ---------------------------------------------------------
+
+def fetch_teeitup(course, day):
+    """Return the tee time list a TeeItUp booking page (<alias>.book.teeitup.golf) loads for one date."""
+    params = {"date": day.isoformat(), "facilityIds": course["facility_id"]}
+    url = "https://phx-api-be-east-1b.kenna.io/v2/tee-times?" + urllib.parse.urlencode(params)
+    data = http_get_json(url, headers={"x-be-alias": course["alias"], "Accept": "application/json"})
+    if not isinstance(data, list):
+        raise RuntimeError(f"Unexpected TeeItUp response for {day}: {str(data)[:300]}")
+    return data
+
+
+def is_resident_only(rate_name):
+    name = rate_name.lower()
+    return "resident" in name and "non" not in name
+
+
+def parse_teeitup(raw, course):
+    """Normalize TeeItUp tee times (UTC) to local (datetime, open_spots), using only rates this golfer can book."""
+    tz = ZoneInfo(course.get("timezone", "America/New_York"))
+    holes = course.get("holes")
+    slots = []
+    for facility in raw:
+        for tt in facility.get("teetimes", []):
+            rates = [r for r in tt.get("rates", [])
+                     if not is_resident_only(r.get("name", "")) and (not holes or r.get("holes") in (None, holes))]
+            if not rates:
+                continue
+            allowed = [max(r["allowedPlayers"]) for r in rates if r.get("allowedPlayers")]
+            spots = max(allowed) if allowed else int(tt.get("maxPlayers") or 0)
+            utc = datetime.fromisoformat(tt["teetime"].replace("Z", "+00:00"))
+            slots.append((utc.astimezone(tz).replace(tzinfo=None), spots))
+    return slots
+
+
+PLATFORMS = {"foreup": (fetch_foreup, parse_foreup), "teeitup": (fetch_teeitup, parse_teeitup)}
 
 
 # --- Filtering, diffing, notifying ------------------------------------------
@@ -156,9 +191,9 @@ def main():
     for course in config["courses"]:
         fetch, parse = PLATFORMS[course["platform"]]
         course_ok = True
-        for day in target_dates(config, now.date()):
+        for day in target_dates(config, now.date(), course.get("days_ahead")):
             try:
-                slots = parse(fetch(course, day))
+                slots = parse(fetch(course, day), course)
             except Exception as exc:  # keep checking other dates/courses
                 print(f"[error] {course['name']} {day}: {exc}", file=sys.stderr)
                 failures += 1
