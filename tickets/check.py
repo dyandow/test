@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -28,8 +29,11 @@ TIMEZONE = ZoneInfo("America/New_York")
 
 def http_get_json(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:  # include the site's explanation, e.g. a rejected API key
+        raise RuntimeError(f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:300]}") from None
 
 
 def money(cents):
@@ -260,7 +264,7 @@ class Checker:
         return True
 
     def check_seatgeek(self, watch):
-        client_id = os.environ.get("SEATGEEK_CLIENT_ID")
+        client_id = (os.environ.get("SEATGEEK_CLIENT_ID") or "").strip()  # pasted keys often end in a newline
         if not client_id:
             return False
         try:
