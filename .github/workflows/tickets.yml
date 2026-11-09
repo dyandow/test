@@ -1,7 +1,8 @@
 name: Ticket watcher
 
-# Each run checks every minute for ~25 minutes. A new run is queued every 5 minutes and starts as soon as the
-# previous one finishes, so checking is effectively continuous (public repos get unlimited Actions minutes).
+# Each run checks every minute for ~25 minutes, then starts the next run itself, so checking is continuous
+# (public repos get unlimited Actions minutes). GitHub's schedule is only a backup: it often runs hours late.
+# The chain stops on its own once every watched game has been played.
 on:
   schedule:
     - cron: "*/5 * * * *"
@@ -15,6 +16,10 @@ on:
 concurrency:
   group: tickets
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write   # lets a run start the next one
 
 jobs:
   check:
@@ -50,3 +55,14 @@ jobs:
         with:
           path: tickets_state.json
           key: tickets-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Start the next run
+        if: always() && !inputs.test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python -c "import sys; from tickets.check import any_live_watch; sys.exit(0 if any_live_watch() else 1)"; then
+            gh workflow run tickets.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+          else
+            echo "No upcoming games to watch; not starting another run."
+          fi

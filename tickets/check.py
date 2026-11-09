@@ -292,6 +292,13 @@ class Checker:
         return True
 
 
+def any_live_watch():
+    """True while some watch still has a game coming up (used to decide whether to keep checking)."""
+    config = json.loads(CONFIG_FILE.read_text())
+    today = datetime.now(TIMEZONE).date()
+    return any(watch_is_live(w, today) for w in config["watches"])
+
+
 def main():
     config = json.loads(CONFIG_FILE.read_text())
     topic = os.environ.get("NTFY_TOPIC")
