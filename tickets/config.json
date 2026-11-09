@@ -4,6 +4,7 @@
       "name": "UConn vs Ohio State",
       "date": "2026-11-13",
       "search": "uconn ohio state",
+      "seatgeek_fallback_searches": ["uconn huskies basketball", "ohio state buckeyes basketball"],
       "gametime_event_id": "6ab1a745d24846c0e7a36391",
       "quantities": [4, 8],
       "max_price_per_seat": 130,

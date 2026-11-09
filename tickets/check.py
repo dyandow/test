@@ -92,25 +92,38 @@ def parse_gametime(raw, event_id, event_url):
 # --- SeatGeek (official API; only shows the cheapest price, not group sizes) -
 
 def fetch_seatgeek(watch, client_id):
-    day = date.fromisoformat(watch["date"])
-    params = {
-        "client_id": client_id,
-        "q": watch["search"],
-        "datetime_local.gte": day.isoformat(),
-        "datetime_local.lt": (day + timedelta(days=1)).isoformat(),
-        "per_page": 10,
-    }
-    return http_get_json("https://api.seatgeek.com/2/events?" + urllib.parse.urlencode(params))
+    """SeatGeek events on the game's date. Tries the configured search, then each team name on its own,
+    and keeps only events on that date, because SeatGeek's text search can miss multi-word queries."""
+    queries = [watch.get("seatgeek_search") or watch["search"]] + watch.get("seatgeek_fallback_searches", [])
+    seen = {}
+    for q in queries:
+        params = {"client_id": client_id, "q": q, "per_page": 50,
+                  "datetime_local.gte": f"{watch['date']}T00:00:00",
+                  "datetime_local.lte": f"{watch['date']}T23:59:59"}
+        raw = http_get_json("https://api.seatgeek.com/2/events?" + urllib.parse.urlencode(params))
+        on_day = [ev for ev in raw.get("events", []) if (ev.get("datetime_local") or "")[:10] == watch["date"]]
+        print(f"  SeatGeek search '{q}': {len(raw.get('events', []))} result(s), {len(on_day)} on {watch['date']}: "
+              + "; ".join(f"{ev.get('title')} [{ev.get('type')}]" for ev in on_day[:5]))
+        for ev in on_day:
+            seen[ev["id"]] = ev
+        if seen:
+            break
+    return {"events": list(seen.values())}
 
 
-def parse_seatgeek(raw):
-    """Return [(event_id, title, lowest_price_dollars, listing_count, url)] for events that have a price."""
+def parse_seatgeek(raw, exclude_words=("parking",)):
+    """Return [(event_id, title, lowest_price_dollars, listing_count, url)] for priced events (not parking etc.)."""
     out = []
     for ev in raw.get("events", []):
+        title = ev.get("title", "")
+        if any(w in title.lower() for w in exclude_words):
+            continue
         stats = ev.get("stats") or {}
         low = stats.get("lowest_price")
         if low:
-            out.append((ev["id"], ev.get("title", ""), float(low), stats.get("listing_count"), ev.get("url")))
+            out.append((ev["id"], title, float(low), stats.get("listing_count"), ev.get("url")))
+        else:
+            print(f"  SeatGeek '{title}': no price in API stats {json.dumps(stats)[:200]}")
     return out
 
 
