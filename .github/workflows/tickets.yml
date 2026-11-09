@@ -1,0 +1,52 @@
+name: Ticket watcher
+
+# Each run checks every minute for ~25 minutes. A new run is queued every 5 minutes and starts as soon as the
+# previous one finishes, so checking is effectively continuous (public repos get unlimited Actions minutes).
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Test mode: send whatever matches right now, even if already alerted"
+        type: boolean
+        default: false
+
+concurrency:
+  group: tickets
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # tickets_state.json remembers which listings were already alerted, between runs.
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: tickets_state.json
+          key: tickets-state-${{ github.run_id }}
+          restore-keys: tickets-state-
+
+      - name: Watch tickets
+        env:
+          NTFY_TOPIC: ${{ secrets.TICKETS_NTFY_TOPIC || secrets.NTFY_TOPIC }}
+          SEATGEEK_CLIENT_ID: ${{ secrets.SEATGEEK_CLIENT_ID }}
+          TEST_MODE: ${{ inputs.test && '1' || '' }}
+          LOOP_MINUTES: ${{ inputs.test && '0' || '25' }}
+          INTERVAL_SECONDS: "60"
+        run: python -m tickets.check
+
+      - name: Save state
+        if: always() && !inputs.test
+        uses: actions/cache/save@v4
+        with:
+          path: tickets_state.json
+          key: tickets-state-${{ github.run_id }}-${{ github.run_attempt }}

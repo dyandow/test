@@ -1,3 +1,4 @@
 state.json
 __pycache__/
 node_modules/
+tickets_state.json
