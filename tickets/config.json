@@ -1,0 +1,13 @@
+{
+  "watches": [
+    {
+      "name": "UConn vs Ohio State",
+      "date": "2026-11-13",
+      "search": "uconn ohio state",
+      "gametime_event_id": "6ab1a745d24846c0e7a36391",
+      "quantities": [4, 8],
+      "max_price_per_seat": 130,
+      "active": true
+    }
+  ]
+}

@@ -59,3 +59,48 @@ login live only in GitHub secrets and are never printed in the (public) logs.
    secrets `BOOK_PIN` and `GITHUB_TOKEN`; text `GITHUB_REPO` = `dyandow/test`, `GITHUB_BRANCH` = default branch.
 4. **GitHub variable** (Settings → Secrets and variables → Actions → *Variables*): `BOOKER_URL` = the worker's URL.
 5. **Practice run**: Actions → Book tee time → Run workflow with an open date/time and *Practice run* ticked.
+
+---
+
+# Ticket watcher
+
+Checks ticket sites **every minute, around the clock** and sends a push notification (same ntfy app) when a
+**new listing** shows up that fits your group size and **all-in price per seat (fees included)**. Tap the alert to
+open the listing, then buy it yourself. No logins are used.
+
+**Currently watching** (edit `tickets/config.json`, or just tell Claude what to change):
+- **UConn vs Ohio State** men's basketball, Fri Nov 13, 2026, 7:30 PM, PeoplesBank Arena, Hartford
+- Seats that can be bought **4 together or 8 together**
+- **$130 or less per seat, all-in**
+
+The first run sends one summary of everything that already matches. After that you only hear about new listings.
+A listing that sells or is pulled and later reposted alerts again. A game stops being checked the day after it's played.
+
+| Site | Status |
+|------|--------|
+| **Gametime** | ✅ Full listings: section, row, group sizes, all-in price |
+| **SeatGeek** | ⚙️ Optional. Add a free key (below). SeatGeek's public API only gives the cheapest price, not group sizes, so it alerts on price drops under your budget |
+| StubHub, Ticketmaster, Vivid Seats, TickPick | ❌ No public data. They block automated checks and only open their APIs to approved partners |
+
+### Watching another game
+Add an entry to `watches` in `tickets/config.json`:
+```json
+{ "name": "UConn vs Marquette", "date": "2027-01-20", "search": "uconn marquette",
+  "quantities": [2, 4], "max_price_per_seat": 90, "active": true }
+```
+`search` is what you'd type into Gametime's search box. The game is matched by `date`.
+`gametime_event_id` is optional and only pins the exact event. Set `"active": false` to pause a watch.
+
+### Setup
+1. Notifications go to the existing `NTFY_TOPIC` secret. To send ticket alerts to a separate topic, add a
+   `TICKETS_NTFY_TOPIC` secret.
+2. *(Optional, SeatGeek)* Sign in at seatgeek.com/account/develop → create an app → copy the **Client ID** →
+   add it as the repository secret `SEATGEEK_CLIENT_ID`.
+3. The workflow (`.github/workflows/tickets.yml`) runs on its own once this is on the default branch.
+   **Test it:** Actions → Ticket watcher → Run workflow → tick **Test mode**. It sends whatever matches now.
+
+### Running locally
+```bash
+DRY_RUN=1 python -m tickets.check                               # one check, prints instead of notifying
+LOOP_MINUTES=600 INTERVAL_SECONDS=30 NTFY_TOPIC=… python -m tickets.check   # keep checking on your own computer
+```
