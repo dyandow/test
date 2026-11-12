@@ -25,6 +25,10 @@ CONFIG_FILE = Path(__file__).with_name("config.json")
 USER_AGENT = "Mozilla/5.0 (ticket-watcher; personal use)"
 GAMETIME_API = "https://mobile.gametime.co"
 TIMEZONE = ZoneInfo("America/New_York")
+# Minimum seconds between checks of each site (the loop itself ticks every INTERVAL_SECONDS).
+SPACING = {"gametime": 110, "seatgeek": 590, "line": 50}
+RATE_LIMIT_BACKOFF = 240   # first pause after an HTTP 429, doubled each time it repeats
+MAX_BACKOFF = 1800
 
 
 def http_get_json(url):
@@ -277,6 +281,9 @@ class Checker:
         self.first_run = state is None or test_mode
         self.events = {}  # watch name -> (gametime event id, url), looked up once per run
         self.sent = 0
+        self.next_try = {}  # source -> time.monotonic() when it may be checked again
+        self.backoff = {}   # source -> current rate-limit backoff, seconds
+        self.rate_limited = False
 
     def notify(self, title, message, click=None, actions=None):
         if self.test_mode:
@@ -294,12 +301,36 @@ class Checker:
         for watch in self.config["watches"]:
             if not watch_is_live(watch, today):
                 continue
-            ok = self.check_gametime(watch)
-            ok = self.check_seatgeek(watch) or ok
-            ok = self.check_line(watch) or ok
+            ok = self.polite("gametime", lambda: self.check_gametime(watch))
+            ok = self.polite("seatgeek", lambda: self.check_seatgeek(watch)) or ok
+            ok = self.polite("line", lambda: self.check_line(watch)) or ok
             any_ok = any_ok or ok
         self.first_run = False
         return any_ok
+
+    def polite(self, source, check):
+        """Run a site check no more often than SPACING allows, backing off when the site rate-limits us.
+        A skipped check counts as OK so it doesn't look like breakage."""
+        now = time.monotonic()
+        if self.test_mode:
+            return check()
+        if now < self.next_try.get(source, 0):
+            return True
+        self.rate_limited = False
+        ok = check()
+        if self.rate_limited:
+            self.backoff[source] = min(max(self.backoff.get(source, 0) * 2, RATE_LIMIT_BACKOFF), MAX_BACKOFF)
+            print(f"  {source}: rate-limited, pausing {self.backoff[source] // 60} min")
+            self.next_try[source] = now + self.backoff[source]
+        else:
+            self.backoff.pop(source, None)
+            self.next_try[source] = now + SPACING.get(source, 0)
+        return ok
+
+    def note_error(self, label, exc):
+        if "HTTP 429" in str(exc):
+            self.rate_limited = True
+        print(f"[error] {label}: {exc}", file=sys.stderr)
 
     def check_gametime(self, watch):
         try:
@@ -308,7 +339,7 @@ class Checker:
             event_id, event_url = self.events[watch["name"]]
             listings = parse_gametime(fetch_gametime(event_id), event_id, event_url)
         except Exception as exc:  # keep checking other sites/watches
-            print(f"[error] Gametime {watch['name']}: {exc}", file=sys.stderr)
+            self.note_error(f"Gametime {watch['name']}", exc)
             return False
         found = matches(watch, listings)
         new = [a for k, a in found.items() if self.test_mode or k not in self.state["seen"]]
@@ -340,7 +371,7 @@ class Checker:
             event = fetch_espn_event(cfg, watch["date"])
             line = find_book_line(event, cfg["book"], cfg["sport"]) if event else None
         except Exception as exc:
-            print(f"[error] {cfg['book']} line {watch['name']}: {exc}", file=sys.stderr)
+            self.note_error(f"{cfg['book']} line {watch['name']}", exc)
             return False
         if not event:
             print(f"  {cfg['book']} line: game not found on ESPN for {watch['date']}")
@@ -360,7 +391,7 @@ class Checker:
         try:
             events = parse_seatgeek(fetch_seatgeek(watch, client_id))
         except Exception as exc:
-            print(f"[error] SeatGeek {watch['name']}: {exc}", file=sys.stderr)
+            self.note_error(f"SeatGeek {watch['name']}", exc)
             return False
         lows = {} if self.test_mode else self.state["lows"]  # a test run reports the current price
         for text, url in seatgeek_alerts(watch, events, lows):

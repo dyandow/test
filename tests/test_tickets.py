@@ -138,3 +138,27 @@ class LineTests(unittest.TestCase):
         self.assertEqual(send.call_count, 1)
         self.assertIn("DraftKings line is up", send.call_args[0][1])
         self.assertEqual(fetch.call_count, 1)  # stops checking once alerted
+
+
+class PolitenessTests(unittest.TestCase):
+    def test_spacing_and_rate_limit_backoff(self):
+        checker = check.Checker({"watches": []}, "topic", dry_run=True, test_mode=False, state=None)
+        calls = []
+
+        def limited():
+            calls.append(1)
+            checker.note_error("Gametime", RuntimeError("HTTP 429: "))
+            return False
+
+        with mock.patch.object(check.time, "monotonic", return_value=1000.0):
+            checker.polite("gametime", limited)
+            self.assertEqual(checker.backoff["gametime"], check.RATE_LIMIT_BACKOFF)
+            self.assertTrue(checker.polite("gametime", limited))   # paused: skipped
+        self.assertEqual(len(calls), 1)
+        with mock.patch.object(check.time, "monotonic", return_value=1000.0 + check.RATE_LIMIT_BACKOFF):
+            checker.polite("gametime", limited)                    # still limited: pause doubles
+        self.assertEqual(checker.backoff["gametime"], 2 * check.RATE_LIMIT_BACKOFF)
+        with mock.patch.object(check.time, "monotonic", return_value=5000.0):
+            checker.polite("gametime", lambda: True)               # recovered
+        self.assertNotIn("gametime", checker.backoff)
+        self.assertEqual(checker.next_try["gametime"], 5000.0 + check.SPACING["gametime"])
