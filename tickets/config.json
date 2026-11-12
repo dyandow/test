@@ -8,6 +8,12 @@
       "gametime_event_id": "6ab1a745d24846c0e7a36391",
       "quantities": [4, 8],
       "max_price_per_seat": 130,
+      "line_alert": {
+        "book": "DraftKings",
+        "sport": "basketball/mens-college-basketball",
+        "teams": ["UConn", "Ohio State"],
+        "url": "https://sportsbook.draftkings.com/leagues/basketball/ncaab"
+      },
       "active": true
     }
   ]

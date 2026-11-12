@@ -127,6 +127,57 @@ def parse_seatgeek(raw, exclude_words=("parking",)):
     return out
 
 
+# --- Betting line (ESPN's public scoreboard, which shows DraftKings odds) ---------
+
+ESPN_API = "https://site.api.espn.com/apis/site/v2/sports"
+
+
+def fetch_espn_event(odds_cfg, game_date):
+    """The ESPN event for the game: first event on that date whose name mentions every team in `teams`."""
+    url = (f"{ESPN_API}/{odds_cfg['sport']}/scoreboard?"
+           + urllib.parse.urlencode({"dates": game_date.replace("-", ""), "groups": odds_cfg.get("groups", "50"),
+                                     "limit": 500}))
+    data = http_get_json(url)
+    teams = [t.lower() for t in odds_cfg["teams"]]
+    for ev in data.get("events", []):
+        if all(t in ev.get("name", "").lower() for t in teams):
+            return ev
+    return None
+
+
+def find_book_line(event, book, sport):
+    """Return the sportsbook's line as {details, over_under, home_ml, away_ml, home, away} or None if not posted."""
+    comp = (event.get("competitions") or [{}])[0]
+    names = {c.get("homeAway"): (c.get("team") or {}).get("shortDisplayName", "") for c in comp.get("competitors", [])}
+    candidates = list(comp.get("odds") or [])
+    if not any(book.lower() in ((o.get("provider") or {}).get("name") or "").lower() for o in candidates):
+        try:  # the game page's "pickcenter" sometimes has odds before the scoreboard does
+            summary = http_get_json(f"{ESPN_API}/{sport}/summary?event={event['id']}")
+            candidates += summary.get("pickcenter") or []
+        except Exception as exc:
+            print(f"  ESPN summary: {exc}", file=sys.stderr)
+    for o in candidates:
+        if book.lower() not in ((o.get("provider") or {}).get("name") or "").lower():
+            continue
+        if not (o.get("details") or o.get("spread") is not None or o.get("overUnder")):
+            continue  # provider listed but no numbers yet
+        ml = lambda side: ((o.get(f"{side}TeamOdds") or {}).get("moneyLine"))
+        return {"details": o.get("details") or f"spread {o.get('spread')}", "over_under": o.get("overUnder"),
+                "home_ml": ml("home"), "away_ml": ml("away"),
+                "home": names.get("home", "Home"), "away": names.get("away", "Away")}
+    return None
+
+
+def format_line_alert(line):
+    parts = [f"Spread: {line['details']}"]
+    if line["over_under"]:
+        parts.append(f"Total: {line['over_under']}")
+    if line["home_ml"] is not None or line["away_ml"] is not None:
+        fmt = lambda v: "?" if v is None else (f"+{v}" if isinstance(v, (int, float)) and v > 0 else str(v))
+        parts.append(f"Moneyline: {line['away']} {fmt(line['away_ml'])} / {line['home']} {fmt(line['home_ml'])}")
+    return "\n".join(parts)
+
+
 # --- Matching, diffing, notifying -------------------------------------------
 
 def matches(watch, listings):
@@ -245,6 +296,7 @@ class Checker:
                 continue
             ok = self.check_gametime(watch)
             ok = self.check_seatgeek(watch) or ok
+            ok = self.check_line(watch) or ok
             any_ok = any_ok or ok
         self.first_run = False
         return any_ok
@@ -274,6 +326,31 @@ class Checker:
             # Only remember what is still listed, so a listing that is pulled and reposted alerts again.
             prefix = f"{watch['name']}|Gametime|"
             self.state["seen"] = {k for k in self.state["seen"] if not k.startswith(prefix)} | set(found)
+        return True
+
+    def check_line(self, watch):
+        """Alert once, when the sportsbook first posts a line for the game."""
+        cfg = watch.get("line_alert")
+        if not cfg:
+            return False
+        key = f"{watch['name']}|line|{cfg['book']}"
+        if key in self.state["seen"] and not self.test_mode:
+            return True  # already told you; nothing more to check
+        try:
+            event = fetch_espn_event(cfg, watch["date"])
+            line = find_book_line(event, cfg["book"], cfg["sport"]) if event else None
+        except Exception as exc:
+            print(f"[error] {cfg['book']} line {watch['name']}: {exc}", file=sys.stderr)
+            return False
+        if not event:
+            print(f"  {cfg['book']} line: game not found on ESPN for {watch['date']}")
+        elif not line:
+            print(f"  {cfg['book']} line: not posted yet ({event.get('name')})")
+        else:
+            print(f"  {cfg['book']} line: {line}")
+            self.notify(f"{watch['name']}: {cfg['book']} line is up", format_line_alert(line), cfg.get("url"))
+            if not self.test_mode:
+                self.state["seen"].add(key)
         return True
 
     def check_seatgeek(self, watch):

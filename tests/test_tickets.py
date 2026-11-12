@@ -99,3 +99,42 @@ class SeatGeekTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+LINE_CFG = {"book": "DraftKings", "sport": "basketball/mens-college-basketball",
+            "teams": ["UConn", "Ohio State"], "url": "https://sportsbook.draftkings.com"}
+
+
+def espn_event(odds):
+    return {"id": "401", "name": "Ohio State Buckeyes at UConn Huskies", "competitions": [{
+        "competitors": [{"homeAway": "home", "team": {"shortDisplayName": "UConn"}},
+                        {"homeAway": "away", "team": {"shortDisplayName": "Ohio State"}}],
+        "odds": odds}]}
+
+
+DK = {"provider": {"name": "DraftKings"}, "details": "CONN -6.5", "overUnder": 147.5, "spread": -6.5,
+      "homeTeamOdds": {"moneyLine": -275}, "awayTeamOdds": {"moneyLine": 220}}
+
+
+class LineTests(unittest.TestCase):
+    def test_reads_draftkings_line(self):
+        line = check.find_book_line(espn_event([DK]), "DraftKings", LINE_CFG["sport"])
+        self.assertEqual(check.format_line_alert(line),
+                         "Spread: CONN -6.5\nTotal: 147.5\nMoneyline: Ohio State +220 / UConn -275")
+
+    def test_not_posted_when_only_other_books_or_empty(self):
+        other = {**DK, "provider": {"name": "ESPN BET"}}
+        empty = {"provider": {"name": "DraftKings"}}
+        with mock.patch.object(check, "http_get_json", return_value={"pickcenter": [empty]}):
+            self.assertIsNone(check.find_book_line(espn_event([other]), "DraftKings", LINE_CFG["sport"]))
+
+    def test_alerts_once(self):
+        watch = {**WATCH, "line_alert": LINE_CFG}
+        checker = check.Checker({"watches": [watch]}, "topic", dry_run=False, test_mode=False, state=None)
+        with mock.patch.object(check, "fetch_espn_event", return_value=espn_event([DK])) as fetch, \
+             mock.patch.object(check, "send_ntfy") as send:
+            checker.check_line(watch)
+            checker.check_line(watch)
+        self.assertEqual(send.call_count, 1)
+        self.assertIn("DraftKings line is up", send.call_args[0][1])
+        self.assertEqual(fetch.call_count, 1)  # stops checking once alerted
