@@ -31,6 +31,10 @@ final class WinterScene: SKScene {
     private let tree = ChristmasTree()
     private let station = TramStation()
     private var tramLines: [TramLine] = []
+    /// Everything except the falling snow; hidden over full-screen apps.
+    private let props = SKNode()
+    private let snowLayer = SKNode()
+    private var fullScreen = false
 
     private var lastUpdate: TimeInterval = 0
     private var clock: TimeInterval = 0
@@ -62,6 +66,9 @@ final class WinterScene: SKScene {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private func build() {
+        self.addChild(props)
+        snowLayer.zPosition = 0
+        self.addChild(snowLayer)
         // Start with some snow on the ground so the train has something to plow.
         for b in 0..<ground.binCount {
             let x = CGFloat(b)
@@ -69,19 +76,20 @@ final class WinterScene: SKScene {
         }
         ground.node.position = CGPoint(x: 0, y: groundY)
         ground.node.zPosition = 35
-        addChild(ground.node)
+        props.addChild(ground.node)
 
         train.node.zPosition = 30
-        addChild(train.node)
+        train.setWedding(settings.weddingTrain)
+        props.addChild(train.node)
 
         tree.node.zPosition = 20
         tree.node.position = clampTree(settings.treePosition ?? CGPoint(x: size.width - 190, y: groundY + 40))
         tree.restore(settings.treeLights)
-        addChild(tree.node)
+        props.addChild(tree.node)
 
         station.node.position = CGPoint(x: size.width / 2, y: size.height - topInset - 34)
         station.node.zPosition = 27
-        addChild(station.node)
+        props.addChild(station.node)
         for e in settings.tramEnds where e.count == 2 { addLine(end: clamp(CGPoint(x: e[0], y: e[1]))) }
         station.showHint(tramLines.isEmpty)
 
@@ -97,6 +105,10 @@ final class WinterScene: SKScene {
     // MARK: - Public controls (menu bar)
 
     func applySettings() {
+        let mode = settings.fullScreenMode
+        props.isHidden = fullScreen && mode != .keepAll
+        snowLayer.isHidden = fullScreen && mode == .hideAll
+        train.setWedding(settings.weddingTrain)
         train.node.isHidden = !settings.showTrain
         tree.node.isHidden = !settings.showTree
         if !settings.snowOnWindows {
@@ -124,8 +136,9 @@ final class WinterScene: SKScene {
     /// Whether the overlay should take the mouse at this point (otherwise clicks pass through).
     func isInteractive(at p: CGPoint) -> Bool {
         if drag != nil { return true }
+        if fullScreen && settings.fullScreenMode != .keepAll { return false }
         if station.hitTest(p) { return true }
-        if tramLines.contains(where: { $0.endHitTest(p) }) { return true }
+        if tramLines.contains(where: { $0.endHitTest(p) || $0.carHitTest(p) }) { return true }
         if tree.hitTest(p) { return true }
         if train.hitTest(p) { return true }
         return false
@@ -139,7 +152,7 @@ final class WinterScene: SKScene {
         clock += dt
         frameCount += 1
 
-        if settings.snowOnWindows && frameCount % 2 == 0 { refreshWindows() }
+        if frameCount % 2 == 0 { refreshWindows() }
         spawnSnow(dt)
         stepFlakes(dt)
         if settings.showTrain {
@@ -147,6 +160,10 @@ final class WinterScene: SKScene {
             plow()
         }
         for line in tramLines { line.step(dt) }
+        if tramLines.contains(where: { $0.finished }) {
+            tramLines.removeAll { $0.finished }
+            saveLines()
+        }
 
         ground.relax(maxSlope: 3)
         ground.redrawIfNeeded()
@@ -174,7 +191,7 @@ final class WinterScene: SKScene {
         sprite.alpha = catchable ? .random(in: 0.65...0.9) : .random(in: 0.75...1.0)
         sprite.position = CGPoint(x: .random(in: -30...(size.width + 30)), y: y ?? size.height + 8)
         sprite.zPosition = catchable ? 36 : 40
-        addChild(sprite)
+        snowLayer.addChild(sprite)
         flakes.append(Flake(sprite: sprite, vx: .random(in: -10...14),
                             vy: -(26 + s * 11) * .random(in: 0.85...1.15),
                             phase: .random(in: 0...(2 * .pi)), sway: .random(in: 8...26),
@@ -188,7 +205,7 @@ final class WinterScene: SKScene {
         sprite.alpha = .random(in: 0.8...1.0)
         sprite.position = p
         sprite.zPosition = 40
-        addChild(sprite)
+        snowLayer.addChild(sprite)
         flakes.append(Flake(sprite: sprite, vx: vx, vy: vy, phase: 0, sway: 0,
                             ballistic: true, catchable: false, size: s))
     }
@@ -251,6 +268,17 @@ final class WinterScene: SKScene {
 
     private func refreshWindows() {
         let changed = tracker.refresh(screenHeight: size.height, now: clock)
+
+        // A window covering the whole screen means an app is in full screen: step aside.
+        let screen = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+        let isFull = tracker.windows.first.map { $0.frame.insetBy(dx: -1, dy: -1).contains(screen) } ?? false
+        if isFull != fullScreen {
+            fullScreen = isFull
+            if isFull { drag = nil }
+            applySettings()
+        }
+
+        guard settings.snowOnWindows else { return }
         var seen = Set<CGWindowID>()
         for w in tracker.windows {
             seen.insert(w.id)
@@ -260,7 +288,7 @@ final class WinterScene: SKScene {
             } else {
                 pile = SnowPile(width: w.frame.width, binWidth: 4, maxHeight: 14, baseHeight: 0, taperEdges: true)
                 pile.node.zPosition = 10
-                addChild(pile.node)
+                props.addChild(pile.node)
                 windowPiles[w.id] = pile
             }
             if abs(pile.width - w.frame.width) > 0.5 { pile.resize(width: w.frame.width) }
@@ -355,6 +383,22 @@ final class WinterScene: SKScene {
     }
 
     private func puff(at p: CGPoint, big: Bool) {
+        if train.isWedding && Bool.random() {
+            let heart = SKShapeNode(path: Art.heartPath(size: .random(in: 4...7)))
+            heart.fillColor = [Art.color(1, 0.35, 0.55), Art.color(1, 0.55, 0.7), Art.color(0.95, 0.2, 0.35)].randomElement()!
+            heart.strokeColor = .clear
+            heart.position = p
+            heart.zPosition = 29
+            props.addChild(heart)
+            let dur = Double.random(in: 1.8...2.6)
+            heart.run(.sequence([
+                .group([.moveBy(x: -CGFloat.random(in: 10...40), y: CGFloat.random(in: 60...100), duration: dur),
+                        .rotate(byAngle: .random(in: -0.6...0.6), duration: dur),
+                        .fadeOut(withDuration: dur)]),
+                .removeFromParent(),
+            ]))
+            return
+        }
         let r = CGFloat.random(in: 6...10) * (big ? 1.5 : 1)
         let s = SKSpriteNode(texture: Textures.softDot, size: CGSize(width: r * 2.6, height: r * 2.6))
         s.color = Art.color(0.86, 0.88, 0.93)
@@ -362,7 +406,7 @@ final class WinterScene: SKScene {
         s.alpha = 0.8
         s.position = p
         s.zPosition = 29
-        addChild(s)
+        props.addChild(s)
         let dur = Double.random(in: 1.6...2.4)
         s.run(.sequence([
             .group([.moveBy(x: -CGFloat.random(in: 20...50), y: CGFloat.random(in: 50...85), duration: dur),
@@ -379,18 +423,22 @@ final class WinterScene: SKScene {
         if event.modifierFlags.contains(.control) { secondaryClick(at: p); return }
         if let line = tramLines.last(where: { $0.endHitTest(p) }) {
             drag = .lineEnd(line)
+        } else if !station.hitTest(p), let line = tramLines.last(where: { $0.carHitTest(p) }) {
+            line.retract()
         } else if station.hitTest(p) {
             let preview = SKShapeNode()
             preview.strokeColor = Art.color(0.95, 0.95, 1.0, 0.85)
             preview.lineWidth = 2
             preview.zPosition = 24
             preview.path = TramLine.previewPath(from: station.anchor, to: p)
-            addChild(preview)
+            props.addChild(preview)
             drag = .newLine(preview: preview)
         } else if tree.hitTest(p) {
             drag = .tree(grab: CGPoint(x: tree.node.position.x - p.x, y: tree.node.position.y - p.y),
                          start: p, moved: false)
         } else if train.hitTest(p) {
+            settings.weddingTrain.toggle()
+            train.setWedding(settings.weddingTrain)
             train.toot()
             for _ in 0..<5 { puff(at: CGPoint(x: train.rearX + 258, y: train.node.position.y + 74), big: true) }
         }
@@ -447,14 +495,14 @@ final class WinterScene: SKScene {
 
     private func addLine(end: CGPoint) {
         let line = TramLine(start: station.anchor, end: end)
-        line.add(to: self)
+        line.add(to: props)
         tramLines.append(line)
         station.showHint(false)
     }
 
     private func saveLines() {
-        settings.tramEnds = tramLines.map { [Double($0.end.x), Double($0.end.y)] }
-        station.showHint(tramLines.isEmpty)
+        settings.tramEnds = tramLines.filter { !$0.retracting }.map { [Double($0.end.x), Double($0.end.y)] }
+        station.showHint(tramLines.allSatisfy { $0.retracting })
     }
 
     private func saveTree() {

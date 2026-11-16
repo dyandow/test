@@ -11,6 +11,10 @@ final class Train {
     var sceneWidth: CGFloat
 
     private var wheels: [(node: SKNode, radius: CGFloat)] = []
+    private var coal: [SKNode] = []
+    private let wedding = SKNode()
+    private let weddingFront = SKNode()
+    private(set) var isWedding = false
     private let chimneyTop = CGPoint(x: 258, y: 74)
     private let cruiseSpeed: CGFloat = 65
     private var boost: TimeInterval = 0
@@ -99,7 +103,9 @@ final class Train {
 
         // Coal car (x 80...152)
         for (x, y) in [(92.0, 40.0), (106.0, 44.0), (121.0, 42.0), (136.0, 44.0), (146.0, 39.0)] {
-            add(Art.circle(CGPoint(x: x, y: y), 9, Art.color(0.1, 0.1, 0.12)))
+            let lump = Art.circle(CGPoint(x: x, y: y), 9, Art.color(0.1, 0.1, 0.12))
+            coal.append(lump)
+            add(lump)
         }
         add(Art.box(CGRect(x: 80, y: 12, width: 72, height: 26), red, radius: 3))
         add(Art.box(CGRect(x: 78, y: 35, width: 76, height: 5), darkRed, radius: 2))
@@ -131,5 +137,107 @@ final class Train {
         let rod = Art.box(CGRect(x: 210, y: 10, width: 38, height: 3), gold, radius: 1)
         rod.zPosition = 3
         add(rod)
+
+        buildWedding()
+    }
+
+    /// Wedding mode: the couple rides in the second car, with a "Just Married" sign and cans.
+    func setWedding(_ on: Bool) {
+        isWedding = on
+        wedding.isHidden = !on
+        weddingFront.isHidden = !on
+        coal.forEach { $0.isHidden = on }
+    }
+
+    private func face(_ n: SKNode, x: CGFloat, skin: NSColor) {
+        n.addChild(Art.box(CGRect(x: x - 2.5, y: 49, width: 5, height: 6), skin, radius: 1, outline: false))
+        n.addChild(Art.circle(CGPoint(x: x, y: 61), 8.5, skin))
+        let ink = Art.color(0.18, 0.12, 0.10)
+        n.addChild(Art.circle(CGPoint(x: x - 3, y: 61.5), 1.1, ink, outline: false))
+        n.addChild(Art.circle(CGPoint(x: x + 3, y: 61.5), 1.1, ink, outline: false))
+        let smile = CGMutablePath()
+        smile.addArc(center: CGPoint(x: x, y: 59), radius: 3, startAngle: .pi * 1.15, endAngle: .pi * 1.85, clockwise: false)
+        let mouth = SKShapeNode(path: smile)
+        mouth.strokeColor = ink
+        mouth.lineWidth = 1
+        n.addChild(mouth)
+        let blush = Art.color(1.0, 0.55, 0.55, 0.45)
+        n.addChild(Art.circle(CGPoint(x: x - 5, y: 58.5), 1.6, blush, outline: false))
+        n.addChild(Art.circle(CGPoint(x: x + 5, y: 58.5), 1.6, blush, outline: false))
+    }
+
+    private func buildWedding() {
+        let skin = Art.color(0.98, 0.82, 0.68)
+        let tux = Art.color(0.08, 0.08, 0.10)
+        let white = Art.color(0.99, 0.98, 0.96)
+        let gx: CGFloat = 104   // groom
+        let bx: CGFloat = 130   // bride
+
+        // Behind the car body (their laps are "inside" the car)
+        wedding.zPosition = -0.5
+        node.addChild(wedding)
+        // In front of the car body (the gown spilling over the side, the sign, the cans)
+        weddingFront.zPosition = 1
+        node.addChild(weddingFront)
+
+        // Bride's veil, flowing back in the wind
+        let veil = SKShapeNode(path: Art.polygonPath([CGPoint(x: 0, y: 0), CGPoint(x: -22, y: -6),
+                                                      CGPoint(x: -30, y: -30), CGPoint(x: -8, y: -24)]))
+        veil.fillColor = NSColor.white.withAlphaComponent(0.6)
+        veil.strokeColor = NSColor.white.withAlphaComponent(0.8)
+        veil.position = CGPoint(x: bx - 5, y: 69)
+        veil.run(.repeatForever(.sequence([.scaleX(to: 1.12, duration: 0.5), .scaleX(to: 0.95, duration: 0.5)])))
+        wedding.addChild(veil)
+
+        // Groom: tux, white shirt, bow tie, arm around the bride
+        wedding.addChild(Art.box(CGRect(x: gx + 4, y: 40, width: 18, height: 5), tux, radius: 2.5))
+        wedding.addChild(Art.box(CGRect(x: gx - 9, y: 30, width: 18, height: 22), tux, radius: 5))
+        wedding.addChild(Art.polygon([CGPoint(x: gx - 4, y: 52), CGPoint(x: gx + 4, y: 52), CGPoint(x: gx, y: 41)], white))
+        wedding.addChild(Art.polygon([CGPoint(x: gx - 4.5, y: 51), CGPoint(x: gx, y: 49), CGPoint(x: gx - 4.5, y: 47)], tux, outline: false))
+        wedding.addChild(Art.polygon([CGPoint(x: gx + 4.5, y: 51), CGPoint(x: gx, y: 49), CGPoint(x: gx + 4.5, y: 47)], tux, outline: false))
+        wedding.addChild(Art.circle(CGPoint(x: gx - 5.5, y: 45), 1.7, Art.color(0.9, 0.15, 0.25), outline: false))
+        face(wedding, x: gx, skin: skin)
+        wedding.addChild(Art.ellipse(CGRect(x: gx - 9, y: 62, width: 18, height: 10), Art.color(0.22, 0.14, 0.08)))
+
+        // Bride: long hair, gown, tiara, bouquet
+        let hair = Art.color(0.45, 0.28, 0.16)
+        wedding.addChild(Art.box(CGRect(x: bx - 10.5, y: 44, width: 21, height: 26), hair, radius: 8))
+        wedding.addChild(Art.box(CGRect(x: bx - 8, y: 30, width: 16, height: 18), white, radius: 5))
+        wedding.addChild(Art.box(CGRect(x: bx - 7, y: 46, width: 14, height: 4), skin, radius: 2, outline: false))
+        face(wedding, x: bx, skin: skin)
+        wedding.addChild(Art.ellipse(CGRect(x: bx - 9, y: 62, width: 18, height: 10), hair))
+        for (dx, dy) in [(-4.0, 69.5), (0.0, 70.8), (4.0, 69.5)] {
+            wedding.addChild(Art.circle(CGPoint(x: bx + dx, y: dy), 1.4, Art.color(0.92, 0.94, 1.0)))
+        }
+
+        // Gown skirt spilling over the side of the car, and the bouquet
+        weddingFront.addChild(Art.ellipse(CGRect(x: bx - 17, y: 30, width: 34, height: 15), white))
+        for dx in stride(from: -12.0, through: 12.0, by: 6.0) {
+            weddingFront.addChild(Art.circle(CGPoint(x: bx + dx, y: 33), 1, Art.color(0.85, 0.85, 0.9), outline: false))
+        }
+        weddingFront.addChild(Art.circle(CGPoint(x: bx + 4, y: 41), 3, Art.color(0.3, 0.6, 0.3), outline: false))
+        for (dx, dy, c) in [(2.0, 44.0, Art.color(1, 0.45, 0.6)), (6.0, 45.0, Art.color(1, 1, 1)),
+                            (4.0, 47.5, Art.color(0.95, 0.2, 0.3)), (8.0, 43.0, Art.color(1, 0.7, 0.8))] {
+            weddingFront.addChild(Art.circle(CGPoint(x: bx + dx, y: dy), 2.6, c))
+        }
+
+        // "Just Married" sign on the caboose
+        weddingFront.addChild(Art.box(CGRect(x: 4, y: 24, width: 64, height: 15), white, radius: 3))
+        let sign = SKLabelNode(text: "JUST MARRIED")
+        sign.fontName = "HelveticaNeue-Bold"
+        sign.fontSize = 7.5
+        sign.fontColor = Art.color(0.8, 0.1, 0.2)
+        sign.verticalAlignmentMode = .center
+        sign.position = CGPoint(x: 36, y: 31.5)
+        weddingFront.addChild(sign)
+
+        // Cans tied to the back
+        for i in 0..<3 {
+            let cx = -16 - CGFloat(i) * 12
+            weddingFront.addChild(Art.line([CGPoint(x: 0, y: 15), CGPoint(x: cx, y: 7)], Art.color(0.8, 0.8, 0.85)))
+            weddingFront.addChild(Art.box(CGRect(x: cx - 3, y: 1, width: 6, height: 8), Art.color(0.75, 0.77, 0.82), radius: 1))
+        }
+
+        setWedding(false)
     }
 }

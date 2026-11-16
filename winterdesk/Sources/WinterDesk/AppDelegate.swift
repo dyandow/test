@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = Settings.shared
     private var overlay: OverlayPanel?
     private var backdrop: BackdropWindow?
+    private var backdropView: SKView?
     private var scene: WinterScene?
     private var statusItem: NSStatusItem?
     private var mouseTimer: Timer?
@@ -44,16 +45,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let backView = SKView(frame: local)
         backView.allowsTransparency = true
         backView.preferredFramesPerSecond = 30
-        backView.presentScene(BackdropScene(size: frame.size))
         back.contentView = backView
         backdrop = back
-        if settings.dimBackground { back.orderFrontRegardless() }
+        backdropView = backView
+        showBackdrop(animated: false)
 
         let panel = OverlayPanel(frame: frame)
         let view = OverlaySKView(frame: local)
         view.allowsTransparency = true
         view.preferredFramesPerSecond = 60
-        view.ignoresSiblingOrder = true
         let groundY = screen.visibleFrame.minY - frame.minY
         let topInset = frame.maxY - screen.visibleFrame.maxY
         let s = WinterScene(size: frame.size, groundY: groundY, topInset: topInset)
@@ -62,6 +62,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.orderFrontRegardless()
         overlay = panel
         scene = s
+    }
+
+    private func showBackdrop(animated: Bool) {
+        guard let back = backdrop, let view = backdropView else { return }
+        let theme = settings.backdrop
+        if theme == .off {
+            back.orderOut(nil)
+            view.presentScene(nil)
+            return
+        }
+        let scene = BackdropScene(size: back.frame.size, theme: theme)
+        if animated && back.isVisible {
+            view.presentScene(scene, transition: .crossFade(withDuration: 0.8))
+        } else {
+            view.presentScene(scene)
+        }
+        back.orderFrontRegardless()
     }
 
     /// Make the overlay clickable only where there's something to click.
@@ -93,53 +110,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        func toggle(_ title: String, _ on: Bool, _ action: Selector) {
-            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            i.target = self
-            i.state = on ? .on : .off
-            menu.addItem(i)
-        }
-        func button(_ title: String, _ action: Selector, key: String = "") {
+        func item(_ title: String, _ action: Selector?, on: Bool? = nil, key: String = "",
+                  value: String? = nil) -> NSMenuItem {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: key)
             i.target = self
-            menu.addItem(i)
+            i.representedObject = value
+            if let on { i.state = on ? .on : .off }
+            return i
+        }
+        func submenu(_ title: String, _ items: [NSMenuItem]) {
+            let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            items.forEach(sub.addItem)
+            parent.submenu = sub
+            menu.addItem(parent)
         }
 
-        toggle("Snowfall", settings.snowEnabled, #selector(toggleSnow))
-        let amount = NSMenuItem(title: "Snow Amount", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for a in SnowAmount.allCases {
-            let i = NSMenuItem(title: a.title, action: #selector(setAmount(_:)), keyEquivalent: "")
-            i.target = self
-            i.tag = a.rawValue
-            i.state = settings.snowAmount == a ? .on : .off
-            sub.addItem(i)
-        }
-        amount.submenu = sub
-        menu.addItem(amount)
-        toggle("Snow Piles on Windows", settings.snowOnWindows, #selector(toggleWindowSnow))
-        toggle("Dim Background", settings.dimBackground, #selector(toggleDim))
-        toggle("Train", settings.showTrain, #selector(toggleTrain))
-        toggle("Christmas Tree", settings.showTree, #selector(toggleTree))
+        submenu("Snow", [item("Snowfall", #selector(toggleSnow), on: settings.snowEnabled), .separator()]
+            + SnowAmount.allCases.map { item($0.title, #selector(setAmount(_:)), on: settings.snowAmount == $0, value: String($0.rawValue)) }
+            + [.separator(),
+               item("Piles on Windows", #selector(toggleWindowSnow), on: settings.snowOnWindows),
+               item("Shake Off All Windows", #selector(shakeAll))])
+
+        submenu("Background", Backdrop.allCases.map {
+            item($0.title, #selector(setBackdrop(_:)), on: settings.backdrop == $0, value: $0.rawValue)
+        } + [.separator(), item("Next Background", #selector(nextBackdrop))])
+
+        submenu("Train", [item("Show Train", #selector(toggleTrain), on: settings.showTrain),
+                          item("Wedding Train", #selector(toggleWedding), on: settings.weddingTrain)])
+
+        submenu("Tree", [item("Show Tree", #selector(toggleTree), on: settings.showTree),
+                         item("Clear Lights", #selector(clearLights))])
+
+        menu.addItem(item("Remove Tram Lines", #selector(removeTrams)))
+
+        submenu("When an App Is Full Screen", FullScreenMode.allCases.map {
+            item($0.title, #selector(setFullScreenMode(_:)), on: settings.fullScreenMode == $0, value: $0.rawValue)
+        })
+
         menu.addItem(.separator())
-        button("Shake Snow Off All Windows", #selector(shakeAll))
-        button("Clear Tree Lights", #selector(clearLights))
-        button("Remove Tram Lines", #selector(removeTrams))
-        menu.addItem(.separator())
-        toggle("Open at Login", SMAppService.mainApp.status == .enabled, #selector(toggleLogin))
-        button("How to Play…", #selector(showHelp))
-        button("Quit WinterDesk", #selector(quit), key: "q")
+        menu.addItem(item("Open at Login", #selector(toggleLogin), on: SMAppService.mainApp.status == .enabled))
+        menu.addItem(item("How to Play…", #selector(showHelp)))
+        menu.addItem(item("Quit WinterDesk", #selector(quit), key: "q"))
     }
 
     @objc private func toggleSnow() { settings.snowEnabled.toggle() }
     @objc private func setAmount(_ sender: NSMenuItem) {
-        settings.snowAmount = SnowAmount(rawValue: sender.tag) ?? .medium
+        settings.snowAmount = SnowAmount(rawValue: Int(sender.representedObject as? String ?? "") ?? 1) ?? .medium
     }
     @objc private func toggleWindowSnow() { settings.snowOnWindows.toggle(); scene?.applySettings() }
-    @objc private func toggleDim() {
-        settings.dimBackground.toggle()
-        if settings.dimBackground { backdrop?.orderFrontRegardless() } else { backdrop?.orderOut(nil) }
+    @objc private func setFullScreenMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let m = FullScreenMode(rawValue: raw) else { return }
+        settings.fullScreenMode = m
+        scene?.applySettings()
     }
+    @objc private func setBackdrop(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let b = Backdrop(rawValue: raw) else { return }
+        settings.backdrop = b
+        showBackdrop(animated: true)
+    }
+    @objc private func nextBackdrop() {
+        let all = Backdrop.allCases
+        let i = all.firstIndex(of: settings.backdrop) ?? 0
+        settings.backdrop = all[(i + 1) % all.count]
+        showBackdrop(animated: true)
+    }
+    @objc private func toggleWedding() { settings.weddingTrain.toggle(); scene?.applySettings() }
     @objc private func toggleTrain() { settings.showTrain.toggle(); scene?.applySettings() }
     @objc private func toggleTree() { settings.showTree.toggle(); scene?.applySettings() }
     @objc private func shakeAll() { scene?.shakeAllWindows() }
@@ -162,10 +198,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showHelp() {
         alert("How to play", """
         • Snow settles on top of your windows. Shake a window quickly back and forth to knock it off.
-        • The train plows the snow along the bottom. Click it to blow the whistle.
+        • The train plows the snow along the bottom. Click it to turn it into the wedding train (and click again to turn it back).
         • Drag the tree anywhere. Click its branches to hang lights; click a light to take it off.
         • Drag from the little station at the top of the screen and let go anywhere to string a cable. A red tram rides it.
-        • Drag a cable's end post to move it; right-click it to remove the cable.
+        • Click the tram car to reel it back into the station. Drag a cable's end post to move it.
+        • Pick a background (fireplace, winter village, northern lights…) from the ❄ menu.
+        • Choose what stays on screen when an app goes full screen from the ❄ menu.
         """)
     }
 

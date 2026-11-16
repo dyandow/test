@@ -40,6 +40,34 @@ enum Art {
         return s
     }
 
+    static func heartPath(size s: CGFloat) -> CGPath {
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: 0, y: -s * 0.9))
+        p.addCurve(to: CGPoint(x: 0, y: s * 0.35), control1: CGPoint(x: s * 1.3, y: -s * 0.1),
+                   control2: CGPoint(x: s * 0.6, y: s * 1.1))
+        p.addCurve(to: CGPoint(x: 0, y: -s * 0.9), control1: CGPoint(x: -s * 0.6, y: s * 1.1),
+                   control2: CGPoint(x: -s * 1.3, y: -s * 0.1))
+        p.closeSubpath()
+        return p
+    }
+
+    static func ellipse(_ rect: CGRect, _ fill: NSColor, outline: Bool = true) -> SKShapeNode {
+        let s = SKShapeNode(ellipseIn: rect)
+        s.fillColor = fill
+        s.strokeColor = outline ? (fill.blended(withFraction: 0.25, of: .black) ?? fill) : .clear
+        s.lineWidth = outline ? 1 : 0
+        return s
+    }
+
+    static func line(_ pts: [CGPoint], _ color: NSColor, width: CGFloat = 1) -> SKShapeNode {
+        let p = CGMutablePath()
+        p.addLines(between: pts)
+        let s = SKShapeNode(path: p)
+        s.strokeColor = color
+        s.lineWidth = width
+        return s
+    }
+
     static func starPath(radius r: CGFloat, inner: CGFloat) -> CGPath {
         let p = CGMutablePath()
         for i in 0..<10 {
@@ -56,7 +84,7 @@ enum Art {
 /// Textures drawn in code, so the app ships with no image files.
 @MainActor
 enum Textures {
-    private static func image(_ size: CGSize, _ draw: @escaping (CGContext, CGRect) -> Void) -> SKTexture {
+    static func image(_ size: CGSize, _ draw: @escaping (CGContext, CGRect) -> Void) -> SKTexture {
         let img = NSImage(size: size, flipped: false) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             draw(ctx, rect)

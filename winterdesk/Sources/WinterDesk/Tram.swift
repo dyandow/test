@@ -52,6 +52,10 @@ final class TramLine {
     private var direction: CGFloat = 1
     private var pause: TimeInterval = 1.0
     private let carSpeed: CGFloat = 80
+    /// Clicked: the car is being reeled back to the station along with the cable.
+    private(set) var retracting = false
+    /// Fully reeled in; the scene removes it.
+    private(set) var finished = false
 
     init(start: CGPoint, end: CGPoint) {
         self.start = start
@@ -112,9 +116,31 @@ final class TramLine {
         car.position = point(t)
     }
 
-    func endHitTest(_ p: CGPoint) -> Bool { hypot(p.x - end.x, p.y - end.y) < 14 }
+    func endHitTest(_ p: CGPoint) -> Bool { !retracting && hypot(p.x - end.x, p.y - end.y) < 14 }
+
+    func carHitTest(_ p: CGPoint) -> Bool {
+        !retracting && car.calculateAccumulatedFrame().insetBy(dx: -4, dy: -4).contains(p)
+    }
+
+    /// Reel the car and the cable back into the station.
+    func retract() {
+        guard !retracting else { return }
+        retracting = true
+        // Shorten the cable to wherever the car is now, then pull it in.
+        let here = point(t)
+        t = 1
+        setEnd(here)
+        post.isHidden = true
+    }
 
     func step(_ dt: TimeInterval) {
+        if retracting {
+            let d = length
+            let move = 260 * CGFloat(dt)
+            if d <= move + 2 { finished = true; remove(); return }
+            setEnd(CGPoint(x: end.x + (start.x - end.x) * move / d, y: end.y + (start.y - end.y) * move / d))
+            return
+        }
         if pause > 0 { pause -= dt; return }
         // slow near the ends, quicker in the middle
         let ease = 0.25 + 0.75 * sin(CGFloat.pi * min(max(t, 0.03), 0.97))

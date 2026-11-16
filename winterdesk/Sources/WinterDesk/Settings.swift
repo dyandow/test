@@ -20,6 +20,32 @@ enum SnowAmount: Int, CaseIterable {
     }
 }
 
+enum Backdrop: String, CaseIterable {
+    case off, dim, fireplace, village, aurora
+
+    var title: String {
+        switch self {
+        case .off: return "Off (My Wallpaper)"
+        case .dim: return "Dimmed Wallpaper"
+        case .fireplace: return "Cozy Fireplace"
+        case .village: return "Winter Village Lights"
+        case .aurora: return "Northern Lights"
+        }
+    }
+}
+
+enum FullScreenMode: String, CaseIterable {
+    case hideAll, snowOnly, keepAll
+
+    var title: String {
+        switch self {
+        case .hideAll: return "Hide Everything"
+        case .snowOnly: return "Keep Just the Snow"
+        case .keepAll: return "Keep Everything"
+        }
+    }
+}
+
 /// Everything the app remembers between launches.
 @MainActor
 final class Settings {
@@ -38,9 +64,21 @@ final class Settings {
         get { SnowAmount(rawValue: defaults.object(forKey: "snowAmount") as? Int ?? 1) ?? .medium }
         set { defaults.set(newValue.rawValue, forKey: "snowAmount") }
     }
-    var dimBackground: Bool {
-        get { bool("dimBackground", true) }
-        set { defaults.set(newValue, forKey: "dimBackground") }
+    var backdrop: Backdrop {
+        get {
+            if let raw = defaults.string(forKey: "backdrop"), let b = Backdrop(rawValue: raw) { return b }
+            return bool("dimBackground", true) ? .dim : .off
+        }
+        set { defaults.set(newValue.rawValue, forKey: "backdrop") }
+    }
+    var weddingTrain: Bool {
+        get { bool("weddingTrain", false) }
+        set { defaults.set(newValue, forKey: "weddingTrain") }
+    }
+    /// What to show while another app is full screen.
+    var fullScreenMode: FullScreenMode {
+        get { FullScreenMode(rawValue: defaults.string(forKey: "fullScreenMode") ?? "") ?? .hideAll }
+        set { defaults.set(newValue.rawValue, forKey: "fullScreenMode") }
     }
     var snowOnWindows: Bool {
         get { bool("snowOnWindows", true) }
