@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var scene: WinterScene?
     private var statusItem: NSStatusItem?
     private var mouseTimer: Timer?
+    /// A tiny invisible window that is NOT allowed on full-screen Spaces.
+    /// When it stops being visible, another app is full screen.
+    private var probe: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -70,6 +73,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderFrontRegardless()
         overlay = panel
         scene = s
+
+        let probeWin = NSWindow(contentRect: NSRect(x: frame.maxX - 2, y: frame.minY, width: 2, height: 2),
+                                styleMask: .borderless, backing: .buffered, defer: false)
+        probeWin.isOpaque = false
+        probeWin.backgroundColor = NSColor(white: 0, alpha: 0.01)
+        probeWin.ignoresMouseEvents = true
+        probeWin.level = .statusBar
+        probeWin.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        probeWin.isReleasedWhenClosed = false
+        probeWin.orderFrontRegardless()
+        probe?.orderOut(nil)
+        probe = probeWin
     }
 
     private func showBackdrop(animated: Bool) {
@@ -92,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Make the overlay clickable only where there's something to click.
     @objc private func pollMouse() {
         guard let panel = overlay, let scene = scene else { return }
+        if let probe {
+            let onFullScreenSpace = !probe.occlusionState.contains(.visible)
+            if scene.systemFullScreen != onFullScreenSpace { scene.systemFullScreen = onFullScreenSpace }
+        }
         let m = NSEvent.mouseLocation
         let p = CGPoint(x: m.x - panel.frame.minX, y: m.y - panel.frame.minY)
         let hit = panel.frame.contains(m) && scene.isInteractive(at: p)

@@ -35,6 +35,11 @@ final class WinterScene: SKScene {
     private let props = SKNode()
     private let snowLayer = SKNode()
     private var fullScreen = false
+    /// Set by the app when it sees a full-screen Space is showing.
+    var systemFullScreen = false {
+        didSet { if systemFullScreen != oldValue { updateFullScreen() } }
+    }
+    private var geometryFullScreen = false
     /// Right-clicking the tree opens the app menu.
     var onMenuRequest: (() -> Void)?
 
@@ -107,6 +112,7 @@ final class WinterScene: SKScene {
     // MARK: - Public controls (menu bar)
 
     func applySettings() {
+        matchSnowToSetting()
         let mode = settings.fullScreenMode
         props.isHidden = fullScreen && mode != .keepAll
         snowLayer.isHidden = fullScreen && mode == .hideAll
@@ -146,6 +152,14 @@ final class WinterScene: SKScene {
         return false
     }
 
+    private func updateFullScreen() {
+        let isFull = geometryFullScreen || systemFullScreen
+        guard isFull != fullScreen else { return }
+        fullScreen = isFull
+        if isFull { drag = nil }
+        applySettings()
+    }
+
     // MARK: - Frame loop
 
     override func update(_ currentTime: TimeInterval) {
@@ -183,6 +197,27 @@ final class WinterScene: SKScene {
         while spawnDebt >= 1 {
             spawnDebt -= 1
             if flakes.count < Self.maxFalling { spawnFlake() }
+        }
+    }
+
+    private var snowTarget: Int {
+        guard settings.snowEnabled else { return 0 }
+        return Int(min(Double(Self.maxFalling) * 0.8, settings.snowAmount.flakesPerSecond * Double(size.height) / 70))
+    }
+
+    /// When the snow setting changes, add or melt away flakes right now instead of waiting for them to fall.
+    private func matchSnowToSetting() {
+        let drifting = flakes.indices.filter { !flakes[$0].ballistic }
+        let target = snowTarget
+        if drifting.count > target {
+            let extra = drifting.shuffled().prefix(drifting.count - target)
+            for i in extra.sorted(by: >) {
+                let f = flakes[i]
+                f.sprite.run(.sequence([.fadeOut(withDuration: 0.6), .removeFromParent()]))
+                flakes.remove(at: i)
+            }
+        } else if drifting.count < target {
+            for _ in 0..<(target - drifting.count) { spawnFlake(y: .random(in: groundY...size.height)) }
         }
     }
 
@@ -271,18 +306,12 @@ final class WinterScene: SKScene {
     private func refreshWindows() {
         let changed = tracker.refresh(screenHeight: size.height, now: clock)
 
-        // A window covering the whole screen means an app is in full screen: step aside.
-        // (On Macs with a camera notch, full-screen apps stop just below the notch,
-        // so the window only has to reach the bottom of the menu bar area.)
-        let isFull = tracker.windows.first.map { w in
-            w.frame.minX <= 1 && w.frame.maxX >= size.width - 1 &&
-                w.frame.minY <= 1 && w.frame.maxY >= size.height - topInset - 1
-        } ?? false
-        if isFull != fullScreen {
-            fullScreen = isFull
-            if isFull { drag = nil }
-            applySettings()
+        // A window filling the screen (below the notch / menu bar area is fine) means full screen.
+        geometryFullScreen = tracker.windows.contains { w in
+            w.frame.minX <= 2 && w.frame.maxX >= size.width - 2 &&
+                w.frame.minY <= 2 && w.frame.maxY >= size.height - max(topInset, 24) - 30
         }
+        updateFullScreen()
 
         guard settings.snowOnWindows else { return }
         var seen = Set<CGWindowID>()

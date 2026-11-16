@@ -28,6 +28,7 @@ final class ControlsModel: ObservableObject {
             case .medium: s.snowAmount = .medium
             case .blizzard: s.snowAmount = .blizzard
             }
+            applyScene()
         }
     }
     @Published var snowOnWindows: Bool { didSet { s.snowOnWindows = snowOnWindows; applyScene() } }
