@@ -40,6 +40,11 @@ final class WinterScene: SKScene {
         didSet { if systemFullScreen != oldValue { updateFullScreen() } }
     }
     private var geometryFullScreen = false
+    private var windowByID: [CGWindowID: TrackedWindow] = [:]
+    private let sled = Sled()
+    private var snowmen: [Snowman] = []
+    private var rollingBall: SKShapeNode?
+    private var rollingRadius: CGFloat = 0
     /// Right-clicking the tree opens the app menu.
     var onMenuRequest: (() -> Void)?
 
@@ -94,6 +99,10 @@ final class WinterScene: SKScene {
         tree.restore(settings.treeLights)
         props.addChild(tree.node)
 
+        sled.node.zPosition = 31
+        sled.node.position = CGPoint(x: 140, y: groundY + ground.surface(atLocalX: 140))
+        props.addChild(sled.node)
+
         station.node.position = CGPoint(x: size.width / 2, y: size.height - topInset - 34)
         station.node.zPosition = 27
         props.addChild(station.node)
@@ -119,6 +128,13 @@ final class WinterScene: SKScene {
         train.setWedding(settings.weddingTrain)
         train.node.isHidden = !settings.showTrain
         tree.node.isHidden = !settings.showTree
+        sled.node.isHidden = !settings.showSled
+        if !settings.showSnowmen {
+            snowmen.forEach { $0.node.removeFromParent() }
+            snowmen.removeAll()
+            rollingBall?.removeFromParent()
+            rollingBall = nil
+        }
         station.node.isHidden = !settings.showTramStation
         tramLines.forEach { $0.setHidden(!settings.showTramStation) }
         if !settings.snowOnWindows {
@@ -150,6 +166,7 @@ final class WinterScene: SKScene {
         if settings.showTramStation && station.hitTest(p) { return true }
         if settings.showTramStation && tramLines.contains(where: { $0.endHitTest(p) || $0.carHitTest(p) }) { return true }
         if tree.hitTest(p) { return true }
+        if settings.showSled && sled.hitTest(p) { return true }
         if train.hitTest(p) { return true }
         return false
     }
@@ -178,6 +195,7 @@ final class WinterScene: SKScene {
             plow()
         }
         if settings.showTramStation { for line in tramLines { line.step(dt) } }
+        if settings.showSled { stepSled(CGFloat(dt)) }
         if tramLines.contains(where: { $0.finished }) {
             tramLines.removeAll { $0.finished }
             saveLines()
@@ -319,6 +337,14 @@ final class WinterScene: SKScene {
         geometryFullScreen = coversAll || noWallpaper ||
             (tracker.menuBarEverSeen && !tracker.menuBarVisible && coversBelowNotch)
         updateFullScreen()
+
+        windowByID = Dictionary(uniqueKeysWithValues: tracker.windows.map { ($0.id, $0) })
+        for line in tramLines {
+            if let id = line.attachedWindow, let w = windowByID[id] {
+                let p = CGPoint(x: w.frame.minX + line.attachOffset.x, y: w.frame.maxY + line.attachOffset.y)
+                if p != line.end { line.setEnd(p) }
+            }
+        }
 
         guard settings.snowOnWindows else { return }
         var seen = Set<CGWindowID>()
@@ -476,6 +502,8 @@ final class WinterScene: SKScene {
             preview.path = TramLine.previewPath(from: station.anchor, to: p)
             props.addChild(preview)
             drag = .newLine(preview: preview)
+        } else if settings.showSled, sled.hitTest(p) {
+            hopSledOntoFrontWindow()
         } else if tree.hitTest(p) {
             drag = .tree(grab: CGPoint(x: tree.node.position.x - p.x, y: tree.node.position.y - p.y),
                          start: p, moved: false)
@@ -516,12 +544,14 @@ final class WinterScene: SKScene {
             preview.removeFromParent()
             if hypot(p.x - station.anchor.x, p.y - station.anchor.y) > 80 {
                 addLine(end: clamp(p))
+                if let line = tramLines.last { hook(line) }
                 saveLines()
             } else if station.hitTest(p) {
                 // A plain click on the station (no drag) opens the settings window.
                 onMenuRequest?()
             }
-        case .lineEnd:
+        case .lineEnd(let line):
+            hook(line)
             saveLines()
         }
     }
@@ -539,6 +569,144 @@ final class WinterScene: SKScene {
         } else if tree.hitTest(p) {
             onMenuRequest?()
         }
+    }
+
+    // MARK: - Cable cars hooked onto windows
+
+    /// If a cable end was dropped on a window, hook it there so it follows the window.
+    private func hook(_ line: TramLine) {
+        let p = line.end
+        if let w = tracker.windows.first(where: { $0.frame.insetBy(dx: 0, dy: -20).contains(p) }) {
+            line.attachedWindow = w.id
+            line.attachOffset = CGPoint(x: p.x - w.frame.minX, y: min(0, p.y - w.frame.maxY))
+            line.setEnd(CGPoint(x: w.frame.minX + line.attachOffset.x, y: w.frame.maxY + line.attachOffset.y))
+        } else {
+            line.attachedWindow = nil
+        }
+    }
+
+    // MARK: - Snowmen (hold Option and sweep through the ground snow)
+
+    /// Called ~30 times a second with the pointer position while Option is held (nil otherwise).
+    func optionSweep(at p: CGPoint?) {
+        guard settings.showSnowmen, !fullScreen, let p else { finishBall(); return }
+        let groundTop = groundY + ground.surface(atLocalX: p.x)
+        if rollingBall == nil {
+            // Start a ball only when sweeping low, through the snow along the bottom.
+            guard p.y < groundTop + 30, p.x > 10, p.x < size.width - 10,
+                  ground.surface(atLocalX: p.x) > ground.baseHeight + 1.5 else { return }
+            rollingRadius = 5
+            let ball = makeSnowball(radius: 1)
+            ball.zPosition = 34
+            ball.position = CGPoint(x: p.x, y: groundTop + rollingRadius)
+            ball.setScale(rollingRadius)
+            ball.lineWidth = 1.2 / rollingRadius
+            props.addChild(ball)
+            rollingBall = ball
+            return
+        }
+        guard let ball = rollingBall else { return }
+        if p.y > groundTop + 120 { finishBall(); return }
+        let x = min(max(p.x, 10), size.width - 10)
+        let dx = x - ball.position.x
+        // Grow by picking up the snow it rolls over.
+        if let b = ground.bin(atLocalX: x), ground.heights[b] > 0.3, rollingRadius < 30 {
+            let take = min(ground.heights[b], abs(dx) * 0.08)
+            ground.heights[b] -= take
+            ground.dirty = true
+            rollingRadius = min(30, rollingRadius + take * 0.35)
+        }
+        ball.setScale(rollingRadius)
+        ball.lineWidth = 1.2 / rollingRadius
+        ball.zRotation -= dx / max(rollingRadius, 1)
+        ball.position = CGPoint(x: x, y: groundY + ground.surface(atLocalX: x) + rollingRadius - 2)
+    }
+
+    private func finishBall() {
+        guard let ball = rollingBall else { return }
+        rollingBall = nil
+        let x = ball.position.x
+        let r = rollingRadius
+        ball.removeFromParent()
+        guard r >= 7 else { return }
+        if let man = snowmen.first(where: { !$0.isComplete && abs($0.node.position.x - x) < $0.baseRadius + r + 12 }) {
+            man.add(radius: r)
+        } else {
+            let man = Snowman(at: CGPoint(x: x, y: groundY + 3))
+            man.node.zPosition = 34
+            props.addChild(man.node)
+            man.add(radius: r)
+            snowmen.append(man)
+        }
+    }
+
+    // MARK: - Sled
+
+    private func stepSled(_ dt: CGFloat) {
+        switch sled.state {
+        case .onWindow(let id, let lx):
+            guard let w = windowByID[id] else {
+                sled.state = .flying
+                sled.velocity = .zero
+                return
+            }
+            let x = min(max(lx, sled.halfWidth), w.frame.width - sled.halfWidth)
+            var pileH: CGFloat = 0
+            if let pile = windowPiles[id], let b = pile.bin(atLocalX: x), pile.isVisible(b) { pileH = pile.heights[b] }
+            sled.node.position = CGPoint(x: w.frame.minX + x, y: w.frame.maxY + pileH)
+            sled.node.zRotation = 0
+            let v = tracker.velocities[id] ?? .zero
+            if v.dy > 450 || abs(v.dx) > 1300 {
+                sled.state = .flying
+                sled.velocity = CGVector(dx: v.dx * 0.9, dy: max(v.dy, 0) * 1.05 + 180)
+            }
+
+        case .flying:
+            let p0 = sled.node.position
+            sled.velocity.dy -= 1100 * dt
+            var p = CGPoint(x: p0.x + sled.velocity.dx * dt, y: p0.y + sled.velocity.dy * dt)
+            if p.x < sled.halfWidth || p.x > size.width - sled.halfWidth {
+                sled.velocity.dx = -sled.velocity.dx * 0.6
+                p.x = min(max(p.x, sled.halfWidth), size.width - sled.halfWidth)
+            }
+            sled.node.zRotation = max(-0.6, min(0.6, sled.velocity.dy / 2500)) * (sled.velocity.dx >= 0 ? 1 : -1)
+            // Land on a window top it falls onto (if that part of the top isn't covered).
+            if sled.velocity.dy < 0 {
+                for (i, w) in tracker.windows.enumerated() where p.x >= w.frame.minX && p.x <= w.frame.maxX {
+                    let top = w.frame.maxY
+                    guard p0.y >= top - 1, p.y < top else { continue }
+                    let fronts = tracker.windows[..<i]
+                    if fronts.contains(where: { $0.frame.contains(CGPoint(x: p.x, y: top + 2)) }) { continue }
+                    sled.state = .onWindow(w.id, localX: p.x - w.frame.minX)
+                    sled.node.position = CGPoint(x: p.x, y: top)
+                    return
+                }
+            }
+            let floor = groundY + ground.surface(atLocalX: p.x)
+            if p.y <= floor {
+                p.y = floor
+                sled.state = .ground
+                sled.velocity.dy = 0
+            }
+            sled.node.position = p
+
+        case .ground:
+            var p = sled.node.position
+            p.x = min(max(p.x + sled.velocity.dx * dt, sled.halfWidth), size.width - sled.halfWidth)
+            sled.velocity.dx *= pow(0.15, dt)
+            p.y = groundY + ground.surface(atLocalX: p.x)
+            sled.node.position = p
+            sled.node.zRotation = 0
+        }
+    }
+
+    /// Click the sled: it hops onto the frontmost window.
+    private func hopSledOntoFrontWindow() {
+        guard let w = tracker.windows.first(where: { $0.frame.maxY < size.height - topInset - 10 }) ?? tracker.windows.first else { return }
+        let lx = min(max(sled.node.position.x - w.frame.minX, sled.halfWidth), w.frame.width - sled.halfWidth)
+        sled.state = .onWindow(w.id, localX: lx)
+        sled.node.setScale(0.5)
+        sled.node.run(.scale(to: 1, duration: 0.2))
     }
 
     // MARK: - Helpers

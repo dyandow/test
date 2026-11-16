@@ -92,6 +92,14 @@ final class Settings {
         get { bool("showTramStation", true) }
         set { defaults.set(newValue, forKey: "showTramStation") }
     }
+    var showSnowmen: Bool {
+        get { bool("showSnowmen", true) }
+        set { defaults.set(newValue, forKey: "showSnowmen") }
+    }
+    var showSled: Bool {
+        get { bool("showSled", true) }
+        set { defaults.set(newValue, forKey: "showSled") }
+    }
     var showTree: Bool {
         get { bool("showTree", true) }
         set { defaults.set(newValue, forKey: "showTree") }

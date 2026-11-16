@@ -35,6 +35,8 @@ final class ControlsModel: ObservableObject {
     @Published var showTrain: Bool { didSet { s.showTrain = showTrain; applyScene() } }
     @Published var weddingTrain: Bool { didSet { s.weddingTrain = weddingTrain; applyScene() } }
     @Published var showTree: Bool { didSet { s.showTree = showTree; applyScene() } }
+    @Published var showSnowmen: Bool { didSet { s.showSnowmen = showSnowmen; applyScene() } }
+    @Published var showSled: Bool { didSet { s.showSled = showSled; applyScene() } }
     @Published var showTramStation: Bool { didSet { s.showTramStation = showTramStation; applyScene() } }
     @Published var fullScreenMode: FullScreenMode { didSet { s.fullScreenMode = fullScreenMode; applyScene() } }
     @Published var openAtLogin: Bool {
@@ -65,6 +67,8 @@ final class ControlsModel: ObservableObject {
         weddingTrain = s.weddingTrain
         showTree = s.showTree
         showTramStation = s.showTramStation
+        showSnowmen = s.showSnowmen
+        showSled = s.showSled
         fullScreenMode = s.fullScreenMode
         openAtLogin = SMAppService.mainApp.status == .enabled
     }
@@ -95,6 +99,8 @@ struct ControlsView: View {
                 Toggle("Wedding train", isOn: $model.weddingTrain)
                 Toggle("Christmas tree", isOn: $model.showTree)
                 Toggle("Tram station", isOn: $model.showTramStation)
+                Toggle("Snowmen (hold ⌥ and sweep the ground snow)", isOn: $model.showSnowmen)
+                Toggle("Sled", isOn: $model.showSled)
             }
 
             HStack(spacing: 8) {

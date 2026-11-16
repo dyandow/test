@@ -56,6 +56,15 @@ final class TramLine {
     private(set) var retracting = false
     /// Fully reeled in; the scene removes it.
     private(set) var finished = false
+    /// When the cable end is hooked onto a window, it follows that window.
+    var attachedWindow: CGWindowID?
+    /// End position relative to the window's top-left corner.
+    var attachOffset = CGPoint.zero
+    // Swinging
+    private var angle: CGFloat = 0
+    private var angularVelocity: CGFloat = 0
+    private var lastCarPosition: CGPoint?
+    private var lastCarVelocity = CGVector.zero
 
     init(start: CGPoint, end: CGPoint) {
         self.start = start
@@ -140,6 +149,7 @@ final class TramLine {
     }
 
     func step(_ dt: TimeInterval) {
+        defer { swing(CGFloat(dt)) }
         if retracting {
             let d = length
             let move = 260 * CGFloat(dt)
@@ -154,6 +164,24 @@ final class TramLine {
         if t >= 1 { t = 1; direction = -1; pause = 1.5 }
         if t <= 0 { t = 0; direction = 1; pause = 1.5 }
         car.position = point(t)
+    }
+
+    /// The car hangs like a pendulum: it sways when the trolley speeds up, stops,
+    /// or when the window the cable is hooked to gets dragged around.
+    private func swing(_ dt: CGFloat) {
+        guard dt > 0 else { return }
+        let p = car.position
+        if let lp = lastCarPosition {
+            let v = CGVector(dx: (p.x - lp.x) / dt, dy: (p.y - lp.y) / dt)
+            let ax = max(-5000, min(5000, (v.dx - lastCarVelocity.dx) / dt))
+            lastCarVelocity = v
+            let L: CGFloat = 30, g: CGFloat = 900
+            let acc = -(g / L) * sin(angle) - 2.0 * angularVelocity - (ax / L) * cos(angle)
+            angularVelocity += acc * dt
+            angle = max(-1.2, min(1.2, angle + angularVelocity * dt))
+        }
+        lastCarPosition = p
+        car.zRotation = angle
     }
 
     /// Dashed line shown while dragging out a new cable.

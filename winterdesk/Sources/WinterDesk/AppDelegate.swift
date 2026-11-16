@@ -117,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let m = NSEvent.mouseLocation
         let p = CGPoint(x: m.x - panel.frame.minX, y: m.y - panel.frame.minY)
+        scene.optionSweep(at: NSEvent.modifierFlags.contains(.option) && panel.frame.contains(m) ? p : nil)
         let hit = panel.frame.contains(m) && scene.isInteractive(at: p)
         if panel.ignoresMouseEvents == hit { panel.ignoresMouseEvents = !hit }
     }

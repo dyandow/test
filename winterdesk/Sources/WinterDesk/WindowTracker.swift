@@ -25,6 +25,8 @@ final class WindowTracker {
     private var lastShake: [CGWindowID: TimeInterval] = [:]
     private let ownPID = getpid()
     var onShake: ((CGWindowID) -> Void)?
+    /// How fast each window is moving, in scene points per second (y up).
+    private(set) var velocities: [CGWindowID: CGVector] = [:]
 
     /// Returns true when any window moved, resized, appeared, vanished or changed order.
     @discardableResult
@@ -62,6 +64,7 @@ final class WindowTracker {
         }
         let ids = Set(found.map(\.id))
         samples = samples.filter { ids.contains($0.key) }
+        velocities = velocities.filter { ids.contains($0.key) }
         menuBarVisible = sawMenuBar
         wallpaperVisible = sawWallpaper
         if sawWallpaper { wallpaperEverSeen = true }
@@ -73,6 +76,12 @@ final class WindowTracker {
 
     private func record(id: CGWindowID, position: CGPoint, now: TimeInterval) {
         var s = samples[id, default: []]
+        if let last = s.last, now - last.t > 0.001 {
+            let dt = CGFloat(now - last.t)
+            velocities[id] = CGVector(dx: (position.x - last.p.x) / dt, dy: -(position.y - last.p.y) / dt)
+        } else if s.isEmpty {
+            velocities[id] = .zero
+        }
         s.append(Sample(t: now, p: position))
         s.removeAll { now - $0.t > 0.9 }
         samples[id] = s
