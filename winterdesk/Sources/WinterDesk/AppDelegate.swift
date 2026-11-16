@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A tiny invisible window that is NOT allowed on full-screen Spaces.
     /// When it stops being visible, another app is full screen.
     private var probe: NSWindow?
+    /// Only trust the probe once it has been seen visible at least once.
+    private var probeWorks = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -108,7 +110,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func pollMouse() {
         guard let panel = overlay, let scene = scene else { return }
         if let probe {
-            let onFullScreenSpace = !probe.occlusionState.contains(.visible)
+            let visible = probe.occlusionState.contains(.visible)
+            if visible { probeWorks = true }
+            let onFullScreenSpace = probeWorks && !visible
             if scene.systemFullScreen != onFullScreenSpace { scene.systemFullScreen = onFullScreenSpace }
         }
         let m = NSEvent.mouseLocation
