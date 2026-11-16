@@ -306,11 +306,13 @@ final class WinterScene: SKScene {
     private func refreshWindows() {
         let changed = tracker.refresh(screenHeight: size.height, now: clock)
 
-        // A window filling the screen (below the notch / menu bar area is fine) means full screen.
-        geometryFullScreen = tracker.windows.contains { w in
-            w.frame.minX <= 2 && w.frame.maxX >= size.width - 2 &&
-                w.frame.minY <= 2 && w.frame.maxY >= size.height - max(topInset, 24) - 30
-        }
+        // Full screen = a window covering the entire screen, or (on Macs with a notch, where
+        // full-screen apps stop below the notch) a screen-wide window while the menu bar is hidden.
+        // A merely maximized window doesn't count: the menu bar is still showing.
+        let spansWidth: (TrackedWindow) -> Bool = { $0.frame.minX <= 2 && $0.frame.maxX >= self.size.width - 2 && $0.frame.minY <= 2 }
+        let coversAll = tracker.windows.contains { spansWidth($0) && $0.frame.maxY >= self.size.height - 1 }
+        let coversBelowNotch = tracker.windows.contains { spansWidth($0) && $0.frame.maxY >= self.size.height - max(self.topInset, 24) - 30 }
+        geometryFullScreen = coversAll || (tracker.menuBarEverSeen && !tracker.menuBarVisible && coversBelowNotch)
         updateFullScreen()
 
         guard settings.snowOnWindows else { return }

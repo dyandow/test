@@ -14,6 +14,10 @@ final class WindowTracker {
     private struct Sample { let t: TimeInterval; let p: CGPoint }
 
     private(set) var windows: [TrackedWindow] = []
+    /// Whether the system menu bar is on screen right now (it hides in full-screen apps).
+    private(set) var menuBarVisible = false
+    /// Whether we've ever been able to see the menu bar in the window list at all.
+    private(set) var menuBarEverSeen = false
     private var samples: [CGWindowID: [Sample]] = [:]
     private var lastShake: [CGWindowID: TimeInterval] = [:]
     private let ownPID = getpid()
@@ -25,7 +29,15 @@ final class WindowTracker {
         guard let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
         var found: [TrackedWindow] = []
+        let menuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
+        var sawMenuBar = false
         for info in raw {
+            if let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue, layer == menuLevel,
+               let bd = info[kCGWindowBounds as String] as? NSDictionary,
+               let r = CGRect(dictionaryRepresentation: bd as CFDictionary),
+               r.minY <= 1, r.height >= 15, r.height <= 80 {
+                sawMenuBar = true
+            }
             guard (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
                   let pid = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value, pid != ownPID,
                   let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
@@ -41,6 +53,8 @@ final class WindowTracker {
         }
         let ids = Set(found.map(\.id))
         samples = samples.filter { ids.contains($0.key) }
+        menuBarVisible = sawMenuBar
+        if sawMenuBar { menuBarEverSeen = true }
         let changed = found != windows
         windows = found
         return changed
