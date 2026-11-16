@@ -23,8 +23,8 @@ enum SpaceInfo {
     }
 
     static func mainDisplayIsFullScreen() -> Bool? {
-        guard let (mainConnection, copySpaces) = functions,
-              let displays = copySpaces(mainConnection())?.takeRetainedValue() as? [[String: Any]],
+        guard let fns = functions,
+              let displays = fns.1(fns.0())?.takeRetainedValue() as? [[String: Any]],
               !displays.isEmpty else { return nil }
         let mainID = mainDisplayUUID
         let display = displays.first { ($0["Display Identifier"] as? String) == "Main" }
