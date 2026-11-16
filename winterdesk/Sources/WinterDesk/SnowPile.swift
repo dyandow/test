@@ -1,0 +1,136 @@
+import AppKit
+import SpriteKit
+
+/// A strip of settled snow: a row of small columns ("bins") with heights,
+/// drawn as one smooth white shape. Used for the ground and for window tops.
+@MainActor
+final class SnowPile {
+    let binWidth: CGFloat
+    let maxHeight: CGFloat
+    let baseHeight: CGFloat
+    let taperEdges: Bool
+    private(set) var width: CGFloat
+    var heights: [CGFloat]
+    /// Bins hidden behind a window in front are not drawn and don't catch snow.
+    private(set) var visible: [Bool]
+    var dirty = true
+    let node = SKShapeNode()
+
+    var binCount: Int { heights.count }
+
+    init(width: CGFloat, binWidth: CGFloat, maxHeight: CGFloat, baseHeight: CGFloat, taperEdges: Bool) {
+        self.width = width
+        self.binWidth = binWidth
+        self.maxHeight = maxHeight
+        self.baseHeight = baseHeight
+        self.taperEdges = taperEdges
+        let n = max(1, Int(ceil(width / binWidth)))
+        heights = Array(repeating: 0, count: n)
+        visible = Array(repeating: true, count: n)
+        node.fillColor = Art.color(0.96, 0.97, 1.0)
+        node.strokeColor = Art.color(0.80, 0.86, 0.96, 0.9)
+        node.lineWidth = 1
+        node.isAntialiased = true
+    }
+
+    func resize(width newWidth: CGFloat) {
+        width = newWidth
+        let n = max(1, Int(ceil(newWidth / binWidth)))
+        if n > heights.count {
+            heights += Array(repeating: 0, count: n - heights.count)
+            visible += Array(repeating: true, count: n - visible.count)
+        } else if n < heights.count {
+            heights.removeLast(heights.count - n)
+            visible.removeLast(visible.count - n)
+        }
+        for b in 0..<heights.count { heights[b] = min(heights[b], cap(b)) }
+        dirty = true
+    }
+
+    func bin(atLocalX x: CGFloat) -> Int? {
+        let b = Int(floor(x / binWidth))
+        return b >= 0 && b < heights.count ? b : nil
+    }
+
+    func isVisible(_ b: Int) -> Bool { visible[b] }
+
+    /// Top of the snow at a local x, measured from the pile's base line.
+    func surface(atLocalX x: CGFloat) -> CGFloat {
+        guard let b = bin(atLocalX: x) else { return baseHeight }
+        return baseHeight + heights[b]
+    }
+
+    func cap(_ b: Int) -> CGFloat {
+        guard taperEdges else { return maxHeight }
+        let fromEdge = CGFloat(min(b, heights.count - 1 - b)) * binWidth
+        return min(maxHeight, 1.5 + fromEdge * 0.6)
+    }
+
+    func deposit(bin b: Int, amount: CGFloat) {
+        heights[b] = min(cap(b), heights[b] + amount)
+        dirty = true
+    }
+
+    func clear() {
+        for b in 0..<heights.count { heights[b] = 0 }
+        dirty = true
+    }
+
+    func updateVisibility(_ isVisible: (CGFloat) -> Bool) {
+        for b in 0..<visible.count {
+            let v = isVisible((CGFloat(b) + 0.5) * binWidth)
+            if v != visible[b] { visible[b] = v; dirty = true }
+        }
+    }
+
+    /// Let steep spots slump into their neighbours.
+    func relax(maxSlope: CGFloat) {
+        guard heights.count > 1 else { return }
+        var changed = false
+        for b in 0..<(heights.count - 1) {
+            let d = heights[b] - heights[b + 1]
+            if abs(d) > maxSlope + 0.05 {
+                let move = (abs(d) - maxSlope) * 0.25 * (d > 0 ? 1 : -1)
+                heights[b] -= move
+                heights[b + 1] += move
+                changed = true
+            }
+        }
+        if changed { dirty = true }
+    }
+
+    func redrawIfNeeded() {
+        guard dirty else { return }
+        dirty = false
+        let path = CGMutablePath()
+        var run: [CGPoint] = []
+
+        func flush() {
+            defer { run.removeAll(keepingCapacity: true) }
+            guard let first = run.first, let last = run.last else { return }
+            let x0 = first.x - binWidth / 2
+            let x1 = min(width, last.x + binWidth / 2)
+            path.move(to: CGPoint(x: x0, y: 0))
+            path.addLine(to: CGPoint(x: x0, y: first.y))
+            for j in run.indices.dropFirst() {
+                let a = run[j - 1], b = run[j]
+                path.addQuadCurve(to: CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), control: a)
+            }
+            path.addLine(to: last)
+            path.addLine(to: CGPoint(x: x1, y: last.y))
+            path.addLine(to: CGPoint(x: x1, y: 0))
+            path.closeSubpath()
+        }
+
+        for b in 0..<heights.count {
+            let h = visible[b] ? baseHeight + heights[b] : 0
+            if h > 0.3 {
+                run.append(CGPoint(x: (CGFloat(b) + 0.5) * binWidth, y: h))
+            } else {
+                flush()
+            }
+        }
+        flush()
+        node.path = path.isEmpty ? nil : path
+    }
+}

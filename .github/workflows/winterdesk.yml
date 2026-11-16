@@ -1,0 +1,24 @@
+name: WinterDesk (Mac app)
+
+on:
+  push:
+    paths:
+      - "winterdesk/**"
+      - ".github/workflows/winterdesk.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: winterdesk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build WinterDesk.app
+        run: ./build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WinterDesk
+          path: winterdesk/build/WinterDesk.zip
