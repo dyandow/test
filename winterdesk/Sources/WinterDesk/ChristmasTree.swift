@@ -55,6 +55,11 @@ final class ChristmasTree {
         !node.isHidden && node.calculateAccumulatedFrame().insetBy(dx: -4, dy: -4).contains(scenePoint)
     }
 
+    /// Whether a click landed on the star at the top.
+    func starHit(_ scenePoint: CGPoint) -> Bool {
+        hypot(scenePoint.x - node.position.x, scenePoint.y - (node.position.y + 127)) < 16
+    }
+
     /// Adds or removes a light where the user clicked. Returns true if something changed.
     @discardableResult
     func toggleLight(atScenePoint p: CGPoint) -> Bool {

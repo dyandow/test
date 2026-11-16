@@ -471,7 +471,9 @@ final class WinterScene: SKScene {
         drag = nil
         switch d {
         case .tree(_, _, let moved):
-            if !moved { tree.toggleLight(atScenePoint: p) }
+            if !moved {
+                if tree.starHit(p) { onMenuRequest?() } else { tree.toggleLight(atScenePoint: p) }
+            }
             saveTree()
         case .newLine(let preview):
             preview.removeFromParent()
