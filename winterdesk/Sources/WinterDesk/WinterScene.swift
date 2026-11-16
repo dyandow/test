@@ -204,7 +204,7 @@ final class WinterScene: SKScene {
         ground.relax(maxSlope: 3)
         ground.redrawIfNeeded()
         for pile in windowPiles.values where !pile.node.isHidden {
-            pile.relax(maxSlope: 2)
+            pile.relax(maxSlope: 0.8)
             pile.redrawIfNeeded()
         }
     }
@@ -242,7 +242,7 @@ final class WinterScene: SKScene {
     }
 
     private func spawnFlake(y: CGFloat? = nil) {
-        let catchable = Double.random(in: 0..<1) < 0.5
+        let catchable = Double.random(in: 0..<1) < 0.55
         let s: CGFloat = catchable ? .random(in: 1.8...3.4) : .random(in: 3.0...6.0)
         let sprite = SKSpriteNode(texture: Textures.flake, size: CGSize(width: s, height: s))
         sprite.alpha = catchable ? .random(in: 0.65...0.9) : .random(in: 0.75...1.0)
@@ -287,7 +287,7 @@ final class WinterScene: SKScene {
 
             var landed = false
             if f.catchable && settings.snowOnWindows {
-                landed = landOnWindow(from: p0, to: p, amount: f.size * 0.28)
+                landed = landOnWindow(from: p0, to: p, amount: f.size * 0.36)
             }
             if !landed, f.vy < 0, p.x >= 0, p.x < size.width,
                p.y <= groundY + ground.surface(atLocalX: p.x), let b = ground.bin(atLocalX: p.x) {
@@ -354,7 +354,7 @@ final class WinterScene: SKScene {
             if let existing = windowPiles[w.id] {
                 pile = existing
             } else {
-                pile = SnowPile(width: w.frame.width, binWidth: 4, maxHeight: 14, baseHeight: 0, taperEdges: true)
+                pile = SnowPile(width: w.frame.width, binWidth: 4, maxHeight: 20, baseHeight: 0, taperEdges: true)
                 pile.node.zPosition = 10
                 props.addChild(pile.node)
                 windowPiles[w.id] = pile

@@ -66,8 +66,14 @@ final class SnowPile {
         return min(maxHeight, 1.5 + fromEdge * 0.6)
     }
 
+    /// Spreads each landing flake over a few neighbouring columns so piles build up evenly.
     func deposit(bin b: Int, amount: CGFloat) {
-        heights[b] = min(cap(b), heights[b] + amount)
+        let spread: [(Int, CGFloat)] = [(0, 0.4), (-1, 0.2), (1, 0.2), (-2, 0.1), (2, 0.1)]
+        for (o, w) in spread {
+            let i = b + o
+            guard i >= 0, i < heights.count else { continue }
+            heights[i] = min(cap(i), heights[i] + amount * w)
+        }
         dirty = true
     }
 
@@ -122,8 +128,12 @@ final class SnowPile {
             path.closeSubpath()
         }
 
-        for b in 0..<heights.count {
-            let h = visible[b] ? baseHeight + heights[b] : 0
+        // Draw a softened outline (average of neighbours) for a clean, rounded look.
+        let n = heights.count
+        for b in 0..<n {
+            var sum: CGFloat = 0, count: CGFloat = 0
+            for i in max(0, b - 3)...min(n - 1, b + 3) { sum += heights[i]; count += 1 }
+            let h = visible[b] ? baseHeight + sum / count : 0
             if h > 0.3 {
                 run.append(CGPoint(x: (CGFloat(b) + 0.5) * binWidth, y: h))
             } else {
