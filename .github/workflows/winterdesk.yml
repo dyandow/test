@@ -7,6 +7,9 @@ on:
       - ".github/workflows/winterdesk.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -22,3 +25,12 @@ jobs:
         with:
           name: WinterDesk
           path: winterdesk/build/WinterDesk.zip
+      - name: Publish as a download link
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete winterdesk-latest --yes --cleanup-tag || true
+          gh release create winterdesk-latest build/WinterDesk.zip \
+            --target "${{ github.sha }}" --prerelease \
+            --title "WinterDesk (latest build)" \
+            --notes "Download WinterDesk.zip below, unzip it, drag WinterDesk.app to Applications, then right-click it and choose Open the first time."
