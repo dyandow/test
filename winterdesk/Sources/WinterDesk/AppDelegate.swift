@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var probe: NSWindow?
     /// Only trust the probe once it has been seen visible at least once.
     private var probeWorks = false
+    private var spaceCheckTick = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
@@ -109,11 +110,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Make the overlay clickable only where there's something to click.
     @objc private func pollMouse() {
         guard let panel = overlay, let scene = scene else { return }
-        if let probe {
-            let visible = probe.occlusionState.contains(.visible)
-            if visible { probeWorks = true }
-            let onFullScreenSpace = probeWorks && !visible
-            if scene.systemFullScreen != onFullScreenSpace { scene.systemFullScreen = onFullScreenSpace }
+        spaceCheckTick += 1
+        if spaceCheckTick % 5 == 0 {
+            if let full = SpaceInfo.mainDisplayIsFullScreen() {
+                // Reliable answer straight from the window server.
+                scene.trustsSystemFullScreen = true
+                if scene.systemFullScreen != full { scene.systemFullScreen = full }
+            } else if let probe {
+                let visible = probe.occlusionState.contains(.visible)
+                if visible { probeWorks = true }
+                let onFullScreenSpace = probeWorks && !visible
+                if scene.systemFullScreen != onFullScreenSpace { scene.systemFullScreen = onFullScreenSpace }
+            }
         }
         let m = NSEvent.mouseLocation
         let p = CGPoint(x: m.x - panel.frame.minX, y: m.y - panel.frame.minY)

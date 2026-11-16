@@ -40,6 +40,8 @@ final class WinterScene: SKScene {
         didSet { if systemFullScreen != oldValue { updateFullScreen() } }
     }
     private var geometryFullScreen = false
+    /// When the window server can tell us directly, ignore the guesswork.
+    var trustsSystemFullScreen = false
     private var windowByID: [CGWindowID: TrackedWindow] = [:]
     private let sled = Sled()
     private var snowmen: [Snowman] = []
@@ -172,7 +174,7 @@ final class WinterScene: SKScene {
     }
 
     private func updateFullScreen() {
-        let isFull = geometryFullScreen || systemFullScreen
+        let isFull = trustsSystemFullScreen ? systemFullScreen : (geometryFullScreen || systemFullScreen)
         guard isFull != fullScreen else { return }
         fullScreen = isFull
         if isFull { drag = nil }
@@ -332,9 +334,7 @@ final class WinterScene: SKScene {
         let spansWidth: (TrackedWindow) -> Bool = { $0.frame.minX <= 2 && $0.frame.maxX >= self.size.width - 2 && $0.frame.minY <= 2 }
         let coversAll = tracker.windows.contains { spansWidth($0) && $0.frame.maxY >= self.size.height - 1 }
         let coversBelowNotch = tracker.windows.contains { spansWidth($0) && $0.frame.maxY >= self.size.height - max(self.topInset, 24) - 30 }
-        // Full-screen Spaces (Chrome, Safari, videos…) have no desktop wallpaper behind them.
-        let noWallpaper = tracker.wallpaperEverSeen && !tracker.wallpaperVisible && !tracker.windows.isEmpty
-        geometryFullScreen = coversAll || noWallpaper ||
+        geometryFullScreen = coversAll ||
             (tracker.menuBarEverSeen && !tracker.menuBarVisible && coversBelowNotch)
         updateFullScreen()
 

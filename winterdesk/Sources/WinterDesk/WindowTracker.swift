@@ -31,7 +31,7 @@ final class WindowTracker {
     /// Returns true when any window moved, resized, appeared, vanished or changed order.
     @discardableResult
     func refresh(screenHeight: CGFloat, now: TimeInterval) -> Bool {
-        guard let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly],
+        guard let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
         var found: [TrackedWindow] = []
         let menuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
