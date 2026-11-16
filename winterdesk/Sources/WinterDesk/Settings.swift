@@ -88,6 +88,10 @@ final class Settings {
         get { bool("showTrain", true) }
         set { defaults.set(newValue, forKey: "showTrain") }
     }
+    var showTramStation: Bool {
+        get { bool("showTramStation", true) }
+        set { defaults.set(newValue, forKey: "showTramStation") }
+    }
     var showTree: Bool {
         get { bool("showTree", true) }
         set { defaults.set(newValue, forKey: "showTree") }

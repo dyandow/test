@@ -94,6 +94,12 @@ final class TramLine {
         car.removeFromParent()
     }
 
+    func setHidden(_ hidden: Bool) {
+        cable.isHidden = hidden
+        car.isHidden = hidden
+        post.isHidden = hidden || retracting
+    }
+
     private var length: CGFloat { hypot(end.x - start.x, end.y - start.y) }
 
     private var control: CGPoint {

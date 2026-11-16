@@ -119,6 +119,8 @@ final class WinterScene: SKScene {
         train.setWedding(settings.weddingTrain)
         train.node.isHidden = !settings.showTrain
         tree.node.isHidden = !settings.showTree
+        station.node.isHidden = !settings.showTramStation
+        tramLines.forEach { $0.setHidden(!settings.showTramStation) }
         if !settings.snowOnWindows {
             for pile in windowPiles.values { pile.node.removeFromParent() }
             windowPiles.removeAll()
@@ -145,8 +147,8 @@ final class WinterScene: SKScene {
     func isInteractive(at p: CGPoint) -> Bool {
         if drag != nil { return true }
         if fullScreen && settings.fullScreenMode != .keepAll { return false }
-        if station.hitTest(p) { return true }
-        if tramLines.contains(where: { $0.endHitTest(p) || $0.carHitTest(p) }) { return true }
+        if settings.showTramStation && station.hitTest(p) { return true }
+        if settings.showTramStation && tramLines.contains(where: { $0.endHitTest(p) || $0.carHitTest(p) }) { return true }
         if tree.hitTest(p) { return true }
         if train.hitTest(p) { return true }
         return false
@@ -175,7 +177,7 @@ final class WinterScene: SKScene {
             train.step(dt) { [weak self] p, big in self?.puff(at: p, big: big) }
             plow()
         }
-        for line in tramLines { line.step(dt) }
+        if settings.showTramStation { for line in tramLines { line.step(dt) } }
         if tramLines.contains(where: { $0.finished }) {
             tramLines.removeAll { $0.finished }
             saveLines()
@@ -461,11 +463,12 @@ final class WinterScene: SKScene {
     override func mouseDown(with event: NSEvent) {
         let p = event.location(in: self)
         if event.modifierFlags.contains(.control) { secondaryClick(at: p); return }
-        if let line = tramLines.last(where: { $0.endHitTest(p) }) {
+        let trams = settings.showTramStation
+        if trams, let line = tramLines.last(where: { $0.endHitTest(p) }) {
             drag = .lineEnd(line)
-        } else if !station.hitTest(p), let line = tramLines.last(where: { $0.carHitTest(p) }) {
+        } else if trams, !station.hitTest(p), let line = tramLines.last(where: { $0.carHitTest(p) }) {
             line.retract()
-        } else if station.hitTest(p) {
+        } else if trams, station.hitTest(p) {
             let preview = SKShapeNode()
             preview.strokeColor = Art.color(0.95, 0.95, 1.0, 0.85)
             preview.lineWidth = 2
