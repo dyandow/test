@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# One build at a time, newest wins, so the download link always has the latest code.
+concurrency:
+  group: winterdesk-release
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-latest
