@@ -35,6 +35,8 @@ final class WinterScene: SKScene {
     private let props = SKNode()
     private let snowLayer = SKNode()
     private var fullScreen = false
+    /// Right-clicking the tree opens the app menu.
+    var onMenuRequest: (() -> Void)?
 
     private var lastUpdate: TimeInterval = 0
     private var clock: TimeInterval = 0
@@ -488,6 +490,8 @@ final class WinterScene: SKScene {
             tramLines[i].remove()
             tramLines.remove(at: i)
             saveLines()
+        } else if tree.hitTest(p) {
+            onMenuRequest?()
         }
     }
 

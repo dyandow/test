@@ -25,6 +25,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mouseTimer = timer
     }
 
+    /// Opening the app again while it's running pops up the menu right at the pointer,
+    /// in case the menu bar icon is hidden (e.g. behind the camera notch).
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showMenuAtPointer()
+        return false
+    }
+
+    func showMenuAtPointer() {
+        NSApp.activate(ignoringOtherApps: true)
+        menuNeedsUpdate(menu)
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
     // MARK: - Windows
 
     @objc private func screensChanged() { buildWindows() }
@@ -57,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let groundY = screen.visibleFrame.minY - frame.minY
         let topInset = frame.maxY - screen.visibleFrame.maxY
         let s = WinterScene(size: frame.size, groundY: groundY, topInset: topInset)
+        s.onMenuRequest = { [weak self] in self?.showMenuAtPointer() }
         view.presentScene(s)
         panel.contentView = view
         panel.orderFrontRegardless()
@@ -199,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert("How to play", """
         • Snow settles on top of your windows. Shake a window quickly back and forth to knock it off.
         • The train plows the snow along the bottom. Click it to turn it into the wedding train (and click again to turn it back).
+        • Right-click the tree (or open WinterDesk again) to get this menu anywhere.
         • Drag the tree anywhere. Click its branches to hang lights; click a light to take it off.
         • Drag from the little station at the top of the screen and let go anywhere to string a cable. A red tram rides it.
         • Click the tram car to reel it back into the station. Drag a cable's end post to move it.
