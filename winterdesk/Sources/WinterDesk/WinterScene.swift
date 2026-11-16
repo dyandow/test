@@ -480,6 +480,9 @@ final class WinterScene: SKScene {
             if hypot(p.x - station.anchor.x, p.y - station.anchor.y) > 80 {
                 addLine(end: clamp(p))
                 saveLines()
+            } else if station.hitTest(p) {
+                // A plain click on the station (no drag) opens the settings window.
+                onMenuRequest?()
             }
         case .lineEnd:
             saveLines()

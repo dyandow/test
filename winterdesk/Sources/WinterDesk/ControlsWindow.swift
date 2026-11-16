@@ -110,8 +110,9 @@ struct ControlsView: View {
             if let err = model.loginError {
                 Text(err).font(.caption).foregroundStyle(.secondary)
             }
-            Text("Tip: click the star on the tree to open this window.")
+            Text("Open this window again by clicking the tree's star or the tram station at the top of the screen, or from Spotlight (⌘ Space, type WinterDesk).")
                 .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
         .frame(width: 360)
