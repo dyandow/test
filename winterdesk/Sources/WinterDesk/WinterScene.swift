@@ -593,8 +593,7 @@ final class WinterScene: SKScene {
         let groundTop = groundY + ground.surface(atLocalX: p.x)
         if rollingBall == nil {
             // Start a ball only when sweeping low, through the snow along the bottom.
-            guard p.y < groundTop + 30, p.x > 10, p.x < size.width - 10,
-                  ground.surface(atLocalX: p.x) > ground.baseHeight + 1.5 else { return }
+            guard p.y < groundTop + 60, p.x > 10, p.x < size.width - 10 else { return }
             rollingRadius = 5
             let ball = makeSnowball(radius: 1)
             ball.zPosition = 34
@@ -606,15 +605,19 @@ final class WinterScene: SKScene {
             return
         }
         guard let ball = rollingBall else { return }
-        if p.y > groundTop + 120 { finishBall(); return }
+        if p.y > groundTop + 160 { finishBall(); return }
         let x = min(max(p.x, 10), size.width - 10)
         let dx = x - ball.position.x
         // Grow by picking up the snow it rolls over.
-        if let b = ground.bin(atLocalX: x), ground.heights[b] > 0.3, rollingRadius < 30 {
-            let take = min(ground.heights[b], abs(dx) * 0.08)
-            ground.heights[b] -= take
-            ground.dirty = true
-            rollingRadius = min(30, rollingRadius + take * 0.35)
+        if rollingRadius < 30 {
+            var grow = abs(dx) * 0.03
+            if let b = ground.bin(atLocalX: x), ground.heights[b] > 0.3 {
+                let take = min(ground.heights[b], abs(dx) * 0.08)
+                ground.heights[b] -= take
+                ground.dirty = true
+                grow += take * 0.3
+            }
+            rollingRadius = min(30, rollingRadius + grow)
         }
         ball.setScale(rollingRadius)
         ball.lineWidth = 1.2 / rollingRadius

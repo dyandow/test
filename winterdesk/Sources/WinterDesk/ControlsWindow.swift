@@ -99,7 +99,7 @@ struct ControlsView: View {
                 Toggle("Wedding train", isOn: $model.weddingTrain)
                 Toggle("Christmas tree", isOn: $model.showTree)
                 Toggle("Tram station", isOn: $model.showTramStation)
-                Toggle("Snowmen (hold ⌥ and sweep the ground snow)", isOn: $model.showSnowmen)
+                Toggle("Snowmen (hold ⌥ Option, sweep along the bottom of the screen)", isOn: $model.showSnowmen)
                 Toggle("Sled", isOn: $model.showSled)
             }
 
