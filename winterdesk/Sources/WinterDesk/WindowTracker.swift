@@ -18,6 +18,9 @@ final class WindowTracker {
     private(set) var menuBarVisible = false
     /// Whether we've ever been able to see the menu bar in the window list at all.
     private(set) var menuBarEverSeen = false
+    /// Whether the desktop wallpaper is on screen (full-screen Spaces have none).
+    private(set) var wallpaperVisible = false
+    private(set) var wallpaperEverSeen = false
     private var samples: [CGWindowID: [Sample]] = [:]
     private var lastShake: [CGWindowID: TimeInterval] = [:]
     private let ownPID = getpid()
@@ -26,12 +29,18 @@ final class WindowTracker {
     /// Returns true when any window moved, resized, appeared, vanished or changed order.
     @discardableResult
     func refresh(screenHeight: CGFloat, now: TimeInterval) -> Bool {
-        guard let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+        guard let raw = CGWindowListCopyWindowInfo([.optionOnScreenOnly],
                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
         var found: [TrackedWindow] = []
         let menuLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
         var sawMenuBar = false
+        let wallpaperLevel = Int(CGWindowLevelForKey(.desktopWindow))
+        var sawWallpaper = false
         for info in raw {
+            if let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue, layer == wallpaperLevel,
+               (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value != ownPID {
+                sawWallpaper = true
+            }
             if let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue, layer == menuLevel,
                let bd = info[kCGWindowBounds as String] as? NSDictionary,
                let r = CGRect(dictionaryRepresentation: bd as CFDictionary),
@@ -54,6 +63,8 @@ final class WindowTracker {
         let ids = Set(found.map(\.id))
         samples = samples.filter { ids.contains($0.key) }
         menuBarVisible = sawMenuBar
+        wallpaperVisible = sawWallpaper
+        if sawWallpaper { wallpaperEverSeen = true }
         if sawMenuBar { menuBarEverSeen = true }
         let changed = found != windows
         windows = found
