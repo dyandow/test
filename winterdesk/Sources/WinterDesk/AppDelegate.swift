@@ -156,7 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         submenu("Tree", [item("Show Tree", #selector(toggleTree), on: settings.showTree),
                          item("Clear Lights", #selector(clearLights))])
 
-        menu.addItem(item("Remove Tram Lines", #selector(removeTrams)))
+        menu.addItem(item("Reel In All Trams", #selector(removeTrams)))
 
         submenu("When an App Is Full Screen", FullScreenMode.allCases.map {
             item($0.title, #selector(setFullScreenMode(_:)), on: settings.fullScreenMode == $0, value: $0.rawValue)

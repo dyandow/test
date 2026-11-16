@@ -129,9 +129,9 @@ final class WinterScene: SKScene {
         settings.treeLights = []
     }
 
+    /// Reel every tram back into the station.
     func removeTramLines() {
-        tramLines.forEach { $0.remove() }
-        tramLines.removeAll()
+        tramLines.forEach { $0.retract() }
         saveLines()
     }
 
@@ -272,8 +272,12 @@ final class WinterScene: SKScene {
         let changed = tracker.refresh(screenHeight: size.height, now: clock)
 
         // A window covering the whole screen means an app is in full screen: step aside.
-        let screen = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
-        let isFull = tracker.windows.first.map { $0.frame.insetBy(dx: -1, dy: -1).contains(screen) } ?? false
+        // (On Macs with a camera notch, full-screen apps stop just below the notch,
+        // so the window only has to reach the bottom of the menu bar area.)
+        let isFull = tracker.windows.first.map { w in
+            w.frame.minX <= 1 && w.frame.maxX >= size.width - 1 &&
+                w.frame.minY <= 1 && w.frame.maxY >= size.height - topInset - 1
+        } ?? false
         if isFull != fullScreen {
             fullScreen = isFull
             if isFull { drag = nil }

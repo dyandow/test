@@ -221,11 +221,11 @@ final class Train {
             weddingFront.addChild(Art.circle(CGPoint(x: bx + dx, y: dy), 2.6, c))
         }
 
-        // "Just Married" sign on the caboose
+        // Save-the-date sign on the caboose
         weddingFront.addChild(Art.box(CGRect(x: 4, y: 24, width: 64, height: 15), white, radius: 3))
-        let sign = SKLabelNode(text: "JUST MARRIED")
+        let sign = SKLabelNode(text: "OCT 9 · 2027")
         sign.fontName = "HelveticaNeue-Bold"
-        sign.fontSize = 7.5
+        sign.fontSize = 8.5
         sign.fontColor = Art.color(0.8, 0.1, 0.2)
         sign.verticalAlignmentMode = .center
         sign.position = CGPoint(x: 36, y: 31.5)
