@@ -156,6 +156,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.reelInTrams = { [weak self] in self?.scene?.removeTramLines() }
         m.shakeSnow = { [weak self] in self?.scene?.shakeAllWindows() }
         m.clearLights = { [weak self] in self?.scene?.clearTreeLights() }
+        m.buildSnowman = { [weak self] in self?.scene?.dropSnowman() }
     }
 
     @objc private func openControls() { controls.show() }

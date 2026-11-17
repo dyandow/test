@@ -78,7 +78,9 @@ final class WindowTracker {
         var s = samples[id, default: []]
         if let last = s.last, now - last.t > 0.001 {
             let dt = CGFloat(now - last.t)
-            velocities[id] = CGVector(dx: (position.x - last.p.x) / dt, dy: -(position.y - last.p.y) / dt)
+            let raw = CGVector(dx: (position.x - last.p.x) / dt, dy: -(position.y - last.p.y) / dt)
+            let old = velocities[id] ?? .zero
+            velocities[id] = CGVector(dx: old.dx * 0.5 + raw.dx * 0.5, dy: old.dy * 0.5 + raw.dy * 0.5)
         } else if s.isEmpty {
             velocities[id] = .zero
         }

@@ -4,16 +4,9 @@ import SpriteKit
 /// A little wooden sled that rides on window tops and can be flung between them.
 @MainActor
 final class Sled {
-    enum State {
-        case onWindow(CGWindowID, localX: CGFloat)
-        case flying
-        case ground
-    }
-
     let node = SKNode()
-    var state: State = .ground
-    var velocity = CGVector.zero
     let halfWidth: CGFloat = 28
+    lazy var body = Body(kind: .sled, node: node, halfWidth: halfWidth)
 
     init() {
         let wood = Art.color(0.62, 0.38, 0.18)
@@ -45,7 +38,4 @@ final class Sled {
         node.addChild(ropeNode)
     }
 
-    func hitTest(_ p: CGPoint) -> Bool {
-        !node.isHidden && node.calculateAccumulatedFrame().insetBy(dx: -6, dy: -6).contains(p)
-    }
 }

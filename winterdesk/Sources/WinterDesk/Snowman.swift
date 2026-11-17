@@ -29,6 +29,12 @@ final class Snowman {
     var isComplete: Bool { radii.count >= 3 }
     var baseRadius: CGFloat { radii.first ?? 0 }
 
+    lazy var body: Body = {
+        let b = Body(kind: .snowman, node: node, halfWidth: 14)
+        b.snowman = self
+        return b
+    }()
+
     init(at p: CGPoint) {
         node.position = p
     }
@@ -39,7 +45,7 @@ final class Snowman {
 
     /// Adds a ball on top. Returns true when that completes the snowman.
     @discardableResult
-    func add(radius r: CGFloat) -> Bool {
+    func add(radius r: CGFloat, chime: Bool = true) -> Bool {
         let y = radii.isEmpty ? r : top + r * 0.78
         let ball = makeSnowball(radius: r)
         ball.position = CGPoint(x: 0, y: y)
@@ -49,11 +55,11 @@ final class Snowman {
         radii.append(r)
         centers.append(y)
         top = y + r
-        if radii.count == 3 { decorate(); return true }
+        if radii.count == 3 { decorate(chime: chime); return true }
         return false
     }
 
-    private func decorate() {
+    private func decorate(chime: Bool) {
         let headY = centers[2], headR = radii[2]
         let midY = centers[1], midR = radii[1]
         let coal = Art.color(0.1, 0.1, 0.12)
@@ -89,6 +95,6 @@ final class Snowman {
                               red, radius: 0, outline: false))
 
         node.run(.sequence([.scale(to: 1.08, duration: 0.12), .scale(to: 1.0, duration: 0.12)]))
-        NSSound(named: NSSound.Name("Glass"))?.play()
+        if chime { NSSound(named: NSSound.Name("Glass"))?.play() }
     }
 }

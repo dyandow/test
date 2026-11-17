@@ -19,10 +19,175 @@ final class BackdropScene: SKScene {
         scaleMode = .resizeFill
         switch theme {
         case .off, .dim: buildDim()
-        case .fireplace: buildFireplace()
-        case .village: buildVillage()
-        case .aurora: buildAurora()
+        case .cabin: if !buildPainted("cabin") { buildVillage() }
+        case .fireplace: if !buildPainted("fireplace") { buildFireplace() }
+        case .village: if !buildPainted("village") { buildVillage() }
+        case .aurora: if !buildPainted("aurora") { buildAurora() }
         }
+    }
+
+    // MARK: - Painted backgrounds (pictures shipped inside the app, with animated touches on top)
+
+    /// Where the picture sits on screen (it fills the screen, cropping the overflow).
+    private var picture = CGRect.zero
+    private var pictureScale: CGFloat { picture.width / 2560 }
+
+    /// Converts a position in the picture (0...1 from its top-left) to scene coordinates.
+    private func at(_ u: Double, _ v: Double) -> CGPoint {
+        CGPoint(x: picture.minX + CGFloat(u) * picture.width, y: picture.maxY - CGFloat(v) * picture.height)
+    }
+
+    private func buildPainted(_ name: String) -> Bool {
+        guard let url = Bundle.main.url(forResource: "bg-\(name)", withExtension: "jpg"),
+              let image = NSImage(contentsOf: url) else { return false }
+        let rep = image.representations.first
+        let pw = CGFloat(rep?.pixelsWide ?? Int(image.size.width))
+        let ph = CGFloat(rep?.pixelsHigh ?? Int(image.size.height))
+        guard pw > 0, ph > 0 else { return false }
+        let scale = max(W / pw, H / ph)
+        let size = CGSize(width: pw * scale, height: ph * scale)
+        picture = CGRect(x: (W - size.width) / 2, y: (H - size.height) / 2, width: size.width, height: size.height)
+        let sprite = SKSpriteNode(texture: SKTexture(image: image), size: size)
+        sprite.position = CGPoint(x: W / 2, y: H / 2)
+        add(sprite, z: 0)
+
+        var feats: [String: Any] = [:]
+        if let jurl = Bundle.main.url(forResource: "bg-\(name)", withExtension: "json"),
+           let data = try? Data(contentsOf: jurl),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            feats = obj
+        }
+        let k = pictureScale
+
+        // Twinkling stars in the sky
+        if name != "fireplace" {
+            for _ in 0..<70 {
+                let p = at(.random(in: 0...1), .random(in: 0...0.42))
+                let g = glow(p, diameter: .random(in: 3...7) * max(k, 0.6), color: .white, alpha: 0.0, z: 1)
+                g.run(.sequence([.wait(forDuration: .random(in: 0...6)),
+                                 .repeatForever(.sequence([.fadeAlpha(to: .random(in: 0.5...0.9), duration: .random(in: 0.4...1.2)),
+                                                           .fadeAlpha(to: 0, duration: .random(in: 0.6...1.5)),
+                                                           .wait(forDuration: .random(in: 1...6))]))]))
+            }
+        }
+        // Little lights (eaves, garland, the village tree) twinkle
+        for l in feats["lights"] as? [[Double]] ?? [] where l.count >= 2 {
+            let warm = name == "cabin" || name == "fireplace"
+            let c = warm ? Art.color(1, .random(in: 0.75...0.9), .random(in: 0.4...0.55))
+                         : ChristmasTree.palette.randomElement() ?? .white
+            let g = glow(at(l[0], l[1]), diameter: 26 * max(k, 0.5), color: c, alpha: 0.7, z: 2)
+            g.blendMode = .add
+            pulse(g, from: 0.75, to: 0.25, period: 0.5...1.6)
+        }
+        // Warm windows and lanterns breathe a little
+        for gl in feats["glows"] as? [[Double]] ?? [] where gl.count >= 3 {
+            let g = glow(at(gl[0], gl[1]), diameter: CGFloat(gl[2]) * picture.width * 1.6,
+                         color: Art.color(1, 0.62, 0.25), alpha: 0.16, z: 2)
+            g.blendMode = .add
+            g.run(.repeatForever(.sequence([.fadeAlpha(to: 0.10, duration: .random(in: 0.8...1.6)),
+                                            .fadeAlpha(to: 0.18, duration: .random(in: 0.8...1.6))])))
+        }
+        // Chimney smoke
+        for sm in feats["smoke"] as? [[Double]] ?? [] where sm.count >= 2 {
+            let e = SKEmitterNode()
+            e.particleTexture = Textures.softDot
+            e.particleBirthRate = 3
+            e.particleLifetime = 6
+            e.emissionAngle = .pi / 2
+            e.emissionAngleRange = 0.2
+            e.particleSpeed = 24 * max(k, 0.6)
+            e.xAcceleration = -3
+            e.particleScale = 0.35 * max(k, 0.6)
+            e.particleScaleSpeed = 0.16
+            e.particleAlpha = 0.28
+            e.particleAlphaSpeed = -0.045
+            e.particleColor = Art.color(0.8, 0.8, 0.92)
+            e.particleColorBlendFactor = 1
+            e.position = at(sm[0], sm[1])
+            e.advanceSimulationTime(6)
+            add(e, z: 3)
+        }
+        // Fireplace: flames, embers and flickering firelight
+        if let f = feats["fire"] as? [Double], f.count >= 3 {
+            let base = at(f[0], f[1])
+            let ow = CGFloat(f[2]) * picture.width
+            let s = ow / 64
+            let fire = SKEmitterNode()
+            fire.particleTexture = Textures.softDot
+            fire.particleBirthRate = 170
+            fire.particleLifetime = 0.9
+            fire.particleLifetimeRange = 0.35
+            fire.particlePositionRange = CGVector(dx: ow * 0.5, dy: 4)
+            fire.emissionAngle = .pi / 2
+            fire.emissionAngleRange = 0.28
+            fire.particleSpeed = ow * 0.22
+            fire.particleSpeedRange = ow * 0.1
+            fire.yAcceleration = ow * 0.12
+            fire.particleScale = s * 0.2
+            fire.particleScaleRange = s * 0.07
+            fire.particleScaleSpeed = -s * 0.18
+            fire.particleAlpha = 0.9
+            fire.particleAlphaSpeed = -0.9
+            fire.particleColorBlendFactor = 1
+            fire.particleColorSequence = SKKeyframeSequence(
+                keyframeValues: [Art.color(1, 0.95, 0.7), Art.color(1, 0.65, 0.15), Art.color(0.95, 0.25, 0.05), Art.color(0.4, 0.05, 0.02)],
+                times: [0, 0.25, 0.6, 1])
+            fire.particleBlendMode = .add
+            fire.position = base
+            add(fire, z: 4)
+            let embers = SKEmitterNode()
+            embers.particleTexture = Textures.flake
+            embers.particleBirthRate = 7
+            embers.particleLifetime = 2.2
+            embers.particlePositionRange = CGVector(dx: ow * 0.4, dy: 4)
+            embers.emissionAngle = .pi / 2
+            embers.emissionAngleRange = 0.7
+            embers.particleSpeed = ow * 0.35
+            embers.particleSpeedRange = ow * 0.15
+            embers.particleScale = 0.08 * max(k, 0.6)
+            embers.particleAlphaSpeed = -0.45
+            embers.particleColor = Art.color(1, 0.6, 0.2)
+            embers.particleColorBlendFactor = 1
+            embers.particleBlendMode = .add
+            embers.position = CGPoint(x: base.x, y: base.y + 10)
+            add(embers, z: 4.1)
+            let room = glow(CGPoint(x: base.x, y: base.y + ow * 0.3), diameter: W * 1.1, color: Art.color(1, 0.55, 0.2), alpha: 0.12, z: 5)
+            room.blendMode = .add
+            room.run(.repeatForever(.sequence([.fadeAlpha(to: 0.08, duration: 0.3), .fadeAlpha(to: 0.14, duration: 0.4),
+                                               .fadeAlpha(to: 0.10, duration: 0.2), .fadeAlpha(to: 0.13, duration: 0.35)])))
+        }
+        for c in feats["candles"] as? [[Double]] ?? [] where c.count >= 2 {
+            let p = at(c[0], c[1])
+            let flame = glow(p, diameter: 16 * max(k, 0.6), color: Art.color(1, 0.85, 0.5), alpha: 1, z: 4)
+            flame.yScale = 1.7
+            flame.run(.repeatForever(.sequence([.scaleX(to: 0.8, duration: 0.15), .scaleX(to: 1.1, duration: 0.2)])))
+            let halo = glow(p, diameter: 80 * max(k, 0.6), color: Art.color(1, 0.7, 0.3), alpha: 0.3, z: 3.9)
+            halo.blendMode = .add
+            pulse(halo, from: 0.3, to: 0.18, period: 0.15...0.35)
+        }
+        // Northern lights: soft shimmer moving over the painted curtains
+        for (bi, band) in (feats["bands"] as? [[String: Any]] ?? []).enumerated() {
+            guard let base = band["base"] as? Double, let amp = band["amp"] as? Double, let wl = band["wl"] as? Double,
+                  let seed = band["seed"] as? Double, let height = band["height"] as? Double,
+                  let c0 = band["c0"] as? [Double], c0.count == 3 else { continue }
+            let columns = 40
+            for i in 0..<columns {
+                let u = Double(i) / Double(columns - 1)
+                let xpx = u * 2560
+                let v = base + amp * sin(xpx / (wl * 2560) + seed) + amp * 0.4 * sin(xpx / (wl * 0.37 * 2560) + seed * 2)
+                let p = at(u, v - height * 0.35)
+                let sprite = SKSpriteNode(texture: Textures.softDot,
+                                          size: CGSize(width: picture.width / CGFloat(columns) * 2.6, height: CGFloat(height) * picture.height * 0.9))
+                sprite.color = Art.color(CGFloat(c0[0]), CGFloat(c0[1]), CGFloat(c0[2]))
+                sprite.colorBlendFactor = 1
+                sprite.blendMode = .add
+                sprite.alpha = 0.1
+                sprite.position = p
+                add(sprite, z: 1.5)
+                aurora.append((sprite, bi, i, p.y, 0.12))
+            }
+        }
+        return true
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

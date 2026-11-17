@@ -61,10 +61,11 @@ final class WinterScene: SKScene {
         case tree(grab: CGPoint, start: CGPoint, moved: Bool)
         case newLine(preview: SKShapeNode)
         case lineEnd(TramLine)
+        case body(Body)
     }
 
-    private static let maxFalling = 1000
-    private static let maxTotal = 1700
+    private static let maxFalling = 1400
+    private static let maxTotal = 2100
 
     init(size: CGSize, groundY: CGFloat, topInset: CGFloat) {
         self.groundY = groundY
@@ -102,7 +103,9 @@ final class WinterScene: SKScene {
         props.addChild(tree.node)
 
         sled.node.zPosition = 31
-        sled.node.position = CGPoint(x: 140, y: groundY + ground.surface(atLocalX: 140))
+        sled.node.position = CGPoint(x: 140, y: groundY + ground.surface(atLocalX: 140) - 3)
+        sled.body.support = .ground
+        sled.body.localX = 140
         props.addChild(sled.node)
 
         station.node.position = CGPoint(x: size.width / 2, y: size.height - topInset - 34)
@@ -132,7 +135,7 @@ final class WinterScene: SKScene {
         tree.node.isHidden = !settings.showTree
         sled.node.isHidden = !settings.showSled
         if !settings.showSnowmen {
-            snowmen.forEach { $0.node.removeFromParent() }
+            snowmen.forEach { $0.node.removeFromParent(); $0.body.snowman = nil }
             snowmen.removeAll()
             rollingBall?.removeFromParent()
             rollingBall = nil
@@ -168,7 +171,8 @@ final class WinterScene: SKScene {
         if settings.showTramStation && station.hitTest(p) { return true }
         if settings.showTramStation && tramLines.contains(where: { $0.endHitTest(p) || $0.carHitTest(p) }) { return true }
         if tree.hitTest(p) { return true }
-        if settings.showSled && sled.hitTest(p) { return true }
+        if settings.showSled && sled.body.hitTest(p) { return true }
+        if settings.showSnowmen && snowmen.contains(where: { $0.body.hitTest(p) }) { return true }
         if train.hitTest(p) { return true }
         return false
     }
@@ -189,7 +193,7 @@ final class WinterScene: SKScene {
         clock += dt
         frameCount += 1
 
-        if frameCount % 2 == 0 { refreshWindows() }
+        refreshWindows()
         spawnSnow(dt)
         stepFlakes(dt)
         if settings.showTrain {
@@ -197,7 +201,8 @@ final class WinterScene: SKScene {
             plow()
         }
         if settings.showTramStation { for line in tramLines { line.step(dt) } }
-        if settings.showSled { stepSled(CGFloat(dt)) }
+        if settings.showSled { stepBody(sled.body, CGFloat(dt)) }
+        if settings.showSnowmen { for man in snowmen { stepBody(man.body, CGFloat(dt)) } }
         if tramLines.contains(where: { $0.finished }) {
             tramLines.removeAll { $0.finished }
             saveLines()
@@ -224,7 +229,7 @@ final class WinterScene: SKScene {
 
     private var snowTarget: Int {
         guard settings.snowEnabled else { return 0 }
-        return Int(min(Double(Self.maxFalling) * 0.8, settings.snowAmount.flakesPerSecond * Double(size.height) / 70))
+        return Int(min(Double(Self.maxFalling) * 0.8, settings.snowAmount.flakesPerSecond * Double(size.height) / 45))
     }
 
     /// When the snow setting changes, add or melt away flakes right now instead of waiting for them to fall.
@@ -244,16 +249,19 @@ final class WinterScene: SKScene {
     }
 
     private func spawnFlake(y: CGFloat? = nil) {
-        let catchable = Double.random(in: 0..<1) < 0.55
-        let s: CGFloat = catchable ? .random(in: 1.8...3.4) : .random(in: 3.0...6.0)
-        let sprite = SKSpriteNode(texture: Textures.flake, size: CGSize(width: s, height: s))
-        sprite.alpha = catchable ? .random(in: 0.65...0.9) : .random(in: 0.75...1.0)
+        // Three depths: tiny far-away flakes, mid flakes that settle on windows, and big soft near ones.
+        let roll = Double.random(in: 0..<1)
+        let layer = roll < 0.3 ? 0 : (roll < 0.85 ? 1 : 2)
+        let catchable = layer == 1
+        let s: CGFloat = [CGFloat.random(in: 1.2...2.0), .random(in: 2.0...3.4), .random(in: 4.0...6.5)][layer]
+        let sprite = SKSpriteNode(texture: layer == 2 ? Textures.softDot : Textures.flake, size: CGSize(width: s, height: s))
+        sprite.alpha = [CGFloat.random(in: 0.4...0.6), .random(in: 0.7...0.95), .random(in: 0.55...0.8)][layer]
         sprite.position = CGPoint(x: .random(in: -30...(size.width + 30)), y: y ?? size.height + 8)
-        sprite.zPosition = catchable ? 36 : 40
+        sprite.zPosition = [CGFloat(9), 36, 40][layer]
         snowLayer.addChild(sprite)
-        flakes.append(Flake(sprite: sprite, vx: .random(in: -10...14),
-                            vy: -(26 + s * 11) * .random(in: 0.85...1.15),
-                            phase: .random(in: 0...(2 * .pi)), sway: .random(in: 8...26),
+        let speed: CGFloat = [CGFloat(22), 34, 52][layer] * .random(in: 0.8...1.2)
+        flakes.append(Flake(sprite: sprite, vx: .random(in: -6...10), vy: -speed,
+                            phase: .random(in: 0...(2 * .pi)), sway: .random(in: 6...18) * (layer == 2 ? 1.5 : 1),
                             ballistic: false, catchable: catchable, size: s))
     }
 
@@ -272,7 +280,7 @@ final class WinterScene: SKScene {
     private func stepFlakes(_ dt: TimeInterval) {
         let t = CGFloat(clock)
         let d = CGFloat(dt)
-        let wind = 6 * sin(t * 0.07)
+        let wind = 7 * sin(t * 0.05) + 4 * sin(t * 0.17 + 1)
         var i = 0
         while i < flakes.count {
             var f = flakes[i]
@@ -283,13 +291,13 @@ final class WinterScene: SKScene {
                 p.x += f.vx * d
                 p.y += f.vy * d
             } else {
-                p.x += (f.vx + wind + sin(t * 1.3 + f.phase) * f.sway) * d
+                p.x += (f.vx + wind + sin(t * (0.6 + f.phase * 0.12) + f.phase) * f.sway) * d
                 p.y += f.vy * d
             }
 
             var landed = false
             if f.catchable && settings.snowOnWindows {
-                landed = landOnWindow(from: p0, to: p, amount: f.size * 0.36)
+                landed = landOnWindow(from: p0, to: p, amount: f.size * 0.45)
             }
             if !landed, f.vy < 0, p.x >= 0, p.x < size.width,
                p.y <= groundY + ground.surface(atLocalX: p.x), let b = ground.bin(atLocalX: p.x) {
@@ -440,6 +448,17 @@ final class WinterScene: SKScene {
             ground.dirty = true
             sprayDebt += Double(overflow) * 0.7 + Double(load) * 0.08
         }
+        // The plow shoves the sled along and bowls snowmen over.
+        if sled.body.support == .ground, !sled.body.dragging,
+           sled.node.position.x - sled.body.halfWidth < front, sled.node.position.x > train.rearX {
+            sled.body.localX = front + sled.body.halfWidth + 1
+            sled.body.velocity.dx = max(sled.body.velocity.dx, train.speed)
+        }
+        for man in snowmen where man.body.support == .ground && !man.body.dragging {
+            let x = man.node.position.x
+            if x > front - 6 && x < front + 14 { crumble(man, at: man.node.position, on: .ground) }
+        }
+
         // Spray flies off the top of the mound.
         sprayDebt = min(sprayDebt, 12)
         while sprayDebt >= 1 {
@@ -502,8 +521,14 @@ final class WinterScene: SKScene {
             preview.path = TramLine.previewPath(from: station.anchor, to: p)
             props.addChild(preview)
             drag = .newLine(preview: preview)
-        } else if settings.showSled, sled.hitTest(p) {
-            hopSledOntoFrontWindow()
+        } else if let b = draggableBody(at: p) {
+            b.dragging = true
+            b.grab = CGPoint(x: b.node.position.x - p.x, y: b.node.position.y - p.y)
+            b.lastDragPoint = b.node.position
+            b.lastDragTime = event.timestamp
+            b.dragVelocity = .zero
+            if b.kind == .snowman { b.support = nil }
+            drag = .body(b)
         } else if tree.hitTest(p) {
             drag = .tree(grab: CGPoint(x: tree.node.position.x - p.x, y: tree.node.position.y - p.y),
                          start: p, moved: false)
@@ -527,6 +552,8 @@ final class WinterScene: SKScene {
             preview.path = TramLine.previewPath(from: station.anchor, to: p)
         case .lineEnd(let line):
             line.setEnd(clamp(p))
+        case .body(let b):
+            dragBody(b, to: p, time: event.timestamp)
         }
     }
 
@@ -553,6 +580,8 @@ final class WinterScene: SKScene {
         case .lineEnd(let line):
             hook(line)
             saveLines()
+        case .body(let b):
+            releaseBody(b)
         }
     }
 
@@ -632,84 +661,243 @@ final class WinterScene: SKScene {
         let r = rollingRadius
         ball.removeFromParent()
         guard r >= 7 else { return }
-        if let man = snowmen.first(where: { !$0.isComplete && abs($0.node.position.x - x) < $0.baseRadius + r + 12 }) {
+        if let man = snowmen.first(where: { !$0.isComplete && !$0.body.dragging && $0.body.support != nil
+                                            && abs($0.node.position.x - x) < $0.baseRadius + r + 12 }) {
             man.add(radius: r)
         } else {
-            let man = Snowman(at: CGPoint(x: x, y: groundY + 3))
+            let man = Snowman(at: CGPoint(x: x, y: groundY + ground.surface(atLocalX: x) - 3))
             man.node.zPosition = 34
             props.addChild(man.node)
             man.add(radius: r)
+            man.body.support = .ground
+            man.body.localX = x
             snowmen.append(man)
         }
     }
 
-    // MARK: - Sled
+    // MARK: - Sled and snowmen physics
 
-    private func stepSled(_ dt: CGFloat) {
-        switch sled.state {
-        case .onWindow(let id, let lx):
-            guard let w = windowByID[id] else {
-                sled.state = .flying
-                sled.velocity = .zero
-                return
-            }
-            let x = min(max(lx, sled.halfWidth), w.frame.width - sled.halfWidth)
-            var pileH: CGFloat = 0
-            if let pile = windowPiles[id], let b = pile.bin(atLocalX: x), pile.isVisible(b) { pileH = pile.heights[b] }
-            sled.node.position = CGPoint(x: w.frame.minX + x, y: w.frame.maxY + pileH)
-            sled.node.zRotation = 0
-            let v = tracker.velocities[id] ?? .zero
-            if v.dy > 450 || abs(v.dx) > 1300 {
-                sled.state = .flying
-                sled.velocity = CGVector(dx: v.dx * 0.9, dy: max(v.dy, 0) * 1.05 + 180)
-            }
+    private func draggableBody(at p: CGPoint) -> Body? {
+        if settings.showSnowmen, let man = snowmen.last(where: { $0.body.hitTest(p) }) { return man.body }
+        if settings.showSled, sled.body.hitTest(p) { return sled.body }
+        return nil
+    }
 
-        case .flying:
-            let p0 = sled.node.position
-            sled.velocity.dy -= 1100 * dt
-            var p = CGPoint(x: p0.x + sled.velocity.dx * dt, y: p0.y + sled.velocity.dy * dt)
-            if p.x < sled.halfWidth || p.x > size.width - sled.halfWidth {
-                sled.velocity.dx = -sled.velocity.dx * 0.6
-                p.x = min(max(p.x, sled.halfWidth), size.width - sled.halfWidth)
-            }
-            sled.node.zRotation = max(-0.6, min(0.6, sled.velocity.dy / 2500)) * (sled.velocity.dx >= 0 ? 1 : -1)
-            // Land on a window top it falls onto (if that part of the top isn't covered).
-            if sled.velocity.dy < 0 {
-                for (i, w) in tracker.windows.enumerated() where p.x >= w.frame.minX && p.x <= w.frame.maxX {
-                    let top = w.frame.maxY
-                    guard p0.y >= top - 1, p.y < top else { continue }
-                    let fronts = tracker.windows[..<i]
-                    if fronts.contains(where: { $0.frame.contains(CGPoint(x: p.x, y: top + 2)) }) { continue }
-                    sled.state = .onWindow(w.id, localX: p.x - w.frame.minX)
-                    sled.node.position = CGPoint(x: p.x, y: top)
-                    return
-                }
-            }
-            let floor = groundY + ground.surface(atLocalX: p.x)
-            if p.y <= floor {
-                p.y = floor
-                sled.state = .ground
-                sled.velocity.dy = 0
-            }
-            sled.node.position = p
+    private func windowTopVisible(index i: Int, x: CGFloat) -> Bool {
+        let w = tracker.windows[i]
+        let p = CGPoint(x: x, y: w.frame.maxY + 2)
+        return !tracker.windows[..<i].contains { $0.frame.contains(p) }
+    }
 
+    private func pileHeight(_ id: CGWindowID, atSceneX x: CGFloat) -> CGFloat {
+        guard let w = windowByID[id], let pile = windowPiles[id], !pile.node.isHidden,
+              let b = pile.bin(atLocalX: x - w.frame.minX), pile.isVisible(b) else { return 0 }
+        return pile.heights[b]
+    }
+
+    /// Top of a surface at x, or nil if x is off its edge.
+    private func surfaceTop(_ s: Body.Support, x: CGFloat) -> CGFloat? {
+        switch s {
         case .ground:
-            var p = sled.node.position
-            p.x = min(max(p.x + sled.velocity.dx * dt, sled.halfWidth), size.width - sled.halfWidth)
-            sled.velocity.dx *= pow(0.15, dt)
-            p.y = groundY + ground.surface(atLocalX: p.x)
-            sled.node.position = p
-            sled.node.zRotation = 0
+            return groundY + ground.surface(atLocalX: min(max(x, 0), size.width - 1)) - 3
+        case .window(let id):
+            guard let w = windowByID[id], x >= w.frame.minX - 2, x <= w.frame.maxX + 2 else { return nil }
+            return w.frame.maxY + pileHeight(id, atSceneX: x) * 0.85
         }
     }
 
-    /// Click the sled: it hops onto the frontmost window.
-    private func hopSledOntoFrontWindow() {
-        guard let w = tracker.windows.first(where: { $0.frame.maxY < size.height - topInset - 10 }) ?? tracker.windows.first else { return }
-        let lx = min(max(sled.node.position.x - w.frame.minX, sled.halfWidth), w.frame.width - sled.halfWidth)
-        sled.state = .onWindow(w.id, localX: lx)
-        sled.node.setScale(0.5)
-        sled.node.run(.scale(to: 1, duration: 0.2))
+    /// The highest surface at x whose top is at or below y.
+    private func supportBelow(x: CGFloat, y: CGFloat) -> (Body.Support, CGFloat) {
+        var best: (Body.Support, CGFloat) = (.ground, surfaceTop(.ground, x: x) ?? groundY)
+        for (i, w) in tracker.windows.enumerated() where x >= w.frame.minX && x <= w.frame.maxX {
+            guard let top = surfaceTop(.window(w.id), x: x), top <= y + 3, top > best.1,
+                  windowTopVisible(index: i, x: x) else { continue }
+            best = (.window(w.id), top)
+        }
+        return best
+    }
+
+    private func setSupport(_ b: Body, _ s: Body.Support, x: CGFloat) {
+        b.support = s
+        switch s {
+        case .ground: b.localX = x
+        case .window(let id): b.localX = x - (windowByID[id]?.frame.minX ?? 0)
+        }
+    }
+
+    private func liftOff(_ b: Body) {
+        b.support = nil
+        b.highestPoint = b.node.position.y
+    }
+
+    private func stepBody(_ b: Body, _ dt: CGFloat) {
+        guard !b.dragging, dt > 0 else { return }
+        var p = b.node.position
+        if let s = b.support {
+            switch s {
+            case .window(let id):
+                guard let w = windowByID[id] else { liftOff(b); return }
+                let wv = tracker.velocities[id] ?? .zero
+                if wv.dy < -900 {
+                    // The window was yanked down: whatever's on top is left hanging in the air.
+                    liftOff(b)
+                    b.velocity = CGVector(dx: b.velocity.dx + wv.dx * 0.3, dy: 0)
+                    return
+                }
+                if b.kind == .sled && (wv.dy > 650 || abs(wv.dx) > 1600) {
+                    // Flicked: the sled gets launched.
+                    liftOff(b)
+                    b.velocity = CGVector(dx: b.velocity.dx + wv.dx * 0.85, dy: max(wv.dy, 0) + 160)
+                    return
+                }
+                b.localX += b.velocity.dx * dt
+                p.x = w.frame.minX + b.localX
+            case .ground:
+                b.localX += b.velocity.dx * dt
+                p.x = b.localX
+            }
+            // Sliding friction: a sled glides on a window top, a bit less on snow; snowmen don't slide.
+            let friction: CGFloat = b.kind == .snowman ? 12 : (s == .ground ? 1.3 : 0.55)
+            b.velocity.dx *= exp(-friction * dt)
+            if abs(b.velocity.dx) < 4 { b.velocity.dx = 0 }
+            if p.x < b.halfWidth || p.x > size.width - b.halfWidth {
+                p.x = min(max(p.x, b.halfWidth), size.width - b.halfWidth)
+                b.velocity.dx = -b.velocity.dx * 0.5
+                setSupport(b, s, x: p.x)
+            }
+            guard let top = surfaceTop(s, x: p.x) else {
+                // Slid off the end of a window.
+                liftOff(b)
+                b.velocity.dy = 0
+                b.node.position = p
+                return
+            }
+            p.y = top
+            b.node.position = p
+            b.node.zRotation += (0 - b.node.zRotation) * min(1, dt * 12)
+            if b.kind == .sled, b.velocity.dx != 0 { b.node.xScale = b.velocity.dx < 0 ? -1 : 1 }
+        } else {
+            let p0 = p
+            b.velocity.dy -= 1500 * dt
+            p.x += b.velocity.dx * dt
+            p.y += b.velocity.dy * dt
+            if p.x < b.halfWidth || p.x > size.width - b.halfWidth {
+                p.x = min(max(p.x, b.halfWidth), size.width - b.halfWidth)
+                b.velocity.dx = -b.velocity.dx * 0.5
+            }
+            b.highestPoint = max(b.highestPoint, p.y)
+            if b.velocity.dy <= 0 {
+                let (s, top) = supportBelow(x: p.x, y: p0.y)
+                if p.y <= top {
+                    land(b, on: s, at: CGPoint(x: p.x, y: top))
+                    return
+                }
+            }
+            b.node.position = p
+            let target: CGFloat = b.kind == .sled
+                ? max(-0.5, min(0.5, b.velocity.dy / 2600)) * (b.velocity.dx >= 0 ? 1 : -1)
+                : max(-0.25, min(0.25, -b.velocity.dx / 3000))
+            b.node.zRotation += (target - b.node.zRotation) * min(1, dt * 8)
+        }
+    }
+
+    private func land(_ b: Body, on s: Body.Support, at p: CGPoint) {
+        let fell = b.highestPoint - p.y
+        if b.kind == .snowman, !b.gentleLanding, fell > 220, let man = b.snowman {
+            crumble(man, at: p, on: s)
+            return
+        }
+        b.gentleLanding = false
+        setSupport(b, s, x: p.x)
+        b.velocity.dy = 0
+        b.velocity.dx = b.kind == .snowman ? 0 : b.velocity.dx * 0.85
+        b.node.position = p
+        b.node.removeAction(forKey: "squash")
+        b.node.run(.sequence([.scaleY(to: 0.88, duration: 0.06), .scaleY(to: 1, duration: 0.12)]), withKey: "squash")
+    }
+
+    private func dragBody(_ b: Body, to p: CGPoint, time: TimeInterval) {
+        var target = CGPoint(x: p.x + b.grab.x, y: p.y + b.grab.y)
+        target.x = min(max(target.x, b.halfWidth), size.width - b.halfWidth)
+        let dt = time - b.lastDragTime
+        if dt > 0.004 {
+            let v = CGVector(dx: (target.x - b.lastDragPoint.x) / CGFloat(dt), dy: (target.y - b.lastDragPoint.y) / CGFloat(dt))
+            b.dragVelocity = CGVector(dx: b.dragVelocity.dx * 0.4 + v.dx * 0.6, dy: b.dragVelocity.dy * 0.4 + v.dy * 0.6)
+            b.lastDragPoint = target
+            b.lastDragTime = time
+        }
+        if b.kind == .sled {
+            // Pushing the sled keeps it on the surface under the pointer unless you lift it well clear.
+            let (s, top) = supportBelow(x: target.x, y: target.y + 40)
+            if target.y - top < 45 {
+                setSupport(b, s, x: target.x)
+                b.node.position = CGPoint(x: target.x, y: top)
+                if b.dragVelocity.dx != 0 { b.node.xScale = b.dragVelocity.dx < 0 ? -1 : 1 }
+                return
+            }
+            b.support = nil
+        }
+        b.node.position = target
+    }
+
+    private func releaseBody(_ b: Body) {
+        b.dragging = false
+        let v = CGVector(dx: max(-2600, min(2600, b.dragVelocity.dx)), dy: max(-2600, min(2600, b.dragVelocity.dy)))
+        if b.kind == .sled, b.support != nil {
+            b.velocity = CGVector(dx: v.dx, dy: 0)
+        } else {
+            liftOff(b)
+            b.velocity = b.kind == .snowman ? CGVector(dx: v.dx * 0.3, dy: max(-300, min(300, v.dy * 0.3))) : v
+        }
+    }
+
+    /// A snowman that falls too far breaks apart into a little pile of snow.
+    private func crumble(_ man: Snowman, at p: CGPoint, on s: Body.Support) {
+        let size = man.radii.reduce(0, +)
+        for _ in 0..<min(240, Int(size * 4)) {
+            spawnThrown(at: CGPoint(x: p.x + .random(in: -size * 0.4...size * 0.4), y: p.y + .random(in: 0...size * 1.3)),
+                        vx: .random(in: -170...170), vy: .random(in: 40...280))
+        }
+        let spread = max(12, size * 0.5)
+        let amount = size * 0.5
+        switch s {
+        case .ground:
+            for b in 0..<ground.binCount {
+                let d = (CGFloat(b) + 0.5) * ground.binWidth - p.x
+                guard abs(d) < spread * 2.5 else { continue }
+                ground.heights[b] = min(ground.cap(b), ground.heights[b] + amount * exp(-(d * d) / (spread * spread)))
+            }
+            ground.dirty = true
+        case .window(let id):
+            if let pile = windowPiles[id], let w = windowByID[id] {
+                for b in 0..<pile.binCount {
+                    let d = w.frame.minX + (CGFloat(b) + 0.5) * pile.binWidth - p.x
+                    guard abs(d) < spread * 2.5 else { continue }
+                    pile.heights[b] = min(pile.cap(b), pile.heights[b] + amount * 0.6 * exp(-(d * d) / (spread * spread)))
+                }
+                pile.dirty = true
+            }
+        }
+        man.node.removeFromParent()
+        man.body.snowman = nil
+        snowmen.removeAll { $0 === man }
+    }
+
+    /// "Build a Snowman" from the settings window: a finished snowman drops onto the front window.
+    func dropSnowman() {
+        guard settings.showSnowmen, !fullScreen else { return }
+        let target = tracker.windows.first(where: { $0.frame.maxY < size.height - topInset - 60 })
+        let x = target.map { $0.frame.minX + $0.frame.width * .random(in: 0.25...0.75) } ?? .random(in: size.width * 0.3...size.width * 0.7)
+        let man = Snowman(at: CGPoint(x: x, y: size.height - topInset - 70))
+        man.node.zPosition = 34
+        props.addChild(man.node)
+        man.add(radius: 19, chime: false)
+        man.add(radius: 14, chime: false)
+        man.add(radius: 10, chime: true)
+        man.body.support = nil
+        man.body.gentleLanding = true
+        man.body.highestPoint = man.node.position.y
+        snowmen.append(man)
     }
 
     // MARK: - Helpers

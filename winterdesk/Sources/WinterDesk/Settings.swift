@@ -21,12 +21,13 @@ enum SnowAmount: Int, CaseIterable {
 }
 
 enum Backdrop: String, CaseIterable {
-    case off, dim, fireplace, village, aurora
+    case off, dim, cabin, fireplace, village, aurora
 
     var title: String {
         switch self {
         case .off: return "Off (My Wallpaper)"
         case .dim: return "Dimmed Wallpaper"
+        case .cabin: return "Snowy Cabin"
         case .fireplace: return "Cozy Fireplace"
         case .village: return "Winter Village Lights"
         case .aurora: return "Northern Lights"

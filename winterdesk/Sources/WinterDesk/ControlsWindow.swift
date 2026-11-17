@@ -17,6 +17,7 @@ final class ControlsModel: ObservableObject {
     var reelInTrams: () -> Void = {}
     var shakeSnow: () -> Void = {}
     var clearLights: () -> Void = {}
+    var buildSnowman: () -> Void = {}
 
     @Published var backdrop: Backdrop { didSet { s.backdrop = backdrop; applyBackdrop() } }
     @Published var snow: SnowChoice {
@@ -103,10 +104,15 @@ struct ControlsView: View {
                 Toggle("Sled", isOn: $model.showSled)
             }
 
-            HStack(spacing: 8) {
-                Button("Reel In Trams") { model.reelInTrams() }
-                Button("Shake Off Snow") { model.shakeSnow() }
-                Button("Clear Lights") { model.clearLights() }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Button("Build a Snowman") { model.buildSnowman() }
+                    Button("Shake Off Snow") { model.shakeSnow() }
+                }
+                HStack(spacing: 8) {
+                    Button("Reel In Trams") { model.reelInTrams() }
+                    Button("Clear Lights") { model.clearLights() }
+                }
             }
             .controlSize(.small)
 

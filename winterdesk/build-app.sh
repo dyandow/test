@@ -11,6 +11,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/WinterDesk"
 cp Info.plist "$APP/Contents/Info.plist"
+# Painted backgrounds (and where their lights/smoke/fire go)
+cp Resources/bg-*.jpg Resources/bg-*.json "$APP/Contents/Resources/"
 codesign --force --sign - "$APP"
 
 rm -f build/WinterDesk.zip

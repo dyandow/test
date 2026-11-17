@@ -15,6 +15,9 @@ final class SnowPile {
     private(set) var visible: [Bool]
     var dirty = true
     let node = SKShapeNode()
+    private let shadow = SKShapeNode()
+    /// How far the snow hangs over each end (window piles only).
+    private var overhang: CGFloat { taperEdges ? 3 : 0 }
 
     var binCount: Int { heights.count }
 
@@ -27,10 +30,15 @@ final class SnowPile {
         let n = max(1, Int(ceil(width / binWidth)))
         heights = Array(repeating: 0, count: n)
         visible = Array(repeating: true, count: n)
-        node.fillColor = Art.color(0.96, 0.97, 1.0)
-        node.strokeColor = Art.color(0.80, 0.86, 0.96, 0.9)
-        node.lineWidth = 1
+        node.fillColor = Art.color(0.97, 0.98, 1.0)
+        node.strokeColor = Art.color(0.86, 0.90, 0.98, 0.9)
+        node.lineWidth = 0.8
         node.isAntialiased = true
+        shadow.fillColor = Art.color(0.45, 0.52, 0.72, 0.35)
+        shadow.strokeColor = .clear
+        shadow.position = CGPoint(x: 0, y: -1.8)
+        shadow.zPosition = -0.5
+        node.addChild(shadow)
     }
 
     func resize(width newWidth: CGFloat) {
@@ -63,12 +71,13 @@ final class SnowPile {
     func cap(_ b: Int) -> CGFloat {
         guard taperEdges else { return maxHeight }
         let fromEdge = CGFloat(min(b, heights.count - 1 - b)) * binWidth
-        return min(maxHeight, 1.5 + fromEdge * 0.6)
+        return min(maxHeight, 3 + fromEdge * 0.8)
     }
 
     /// Spreads each landing flake over a few neighbouring columns so piles build up evenly.
     func deposit(bin b: Int, amount: CGFloat) {
-        let spread: [(Int, CGFloat)] = [(0, 0.4), (-1, 0.2), (1, 0.2), (-2, 0.1), (2, 0.1)]
+        let spread: [(Int, CGFloat)] = [(0, 0.24), (-1, 0.18), (1, 0.18), (-2, 0.11), (2, 0.11),
+                                        (-3, 0.06), (3, 0.06), (-4, 0.03), (4, 0.03)]
         for (o, w) in spread {
             let i = b + o
             guard i >= 0, i < heights.count else { continue }
@@ -114,17 +123,22 @@ final class SnowPile {
         func flush() {
             defer { run.removeAll(keepingCapacity: true) }
             guard let first = run.first, let last = run.last else { return }
-            let x0 = first.x - binWidth / 2
-            let x1 = min(width, last.x + binWidth / 2)
-            path.move(to: CGPoint(x: x0, y: 0))
-            path.addLine(to: CGPoint(x: x0, y: first.y))
+            var x0 = first.x - binWidth / 2
+            var x1 = min(width, last.x + binWidth / 2)
+            // Rounded ends that hang slightly over the window's edges.
+            let atStart = x0 <= binWidth, atEnd = x1 >= width - binWidth
+            if atStart { x0 = -overhang }
+            if atEnd { x1 = width + overhang }
+            let drop: CGFloat = taperEdges ? -2.5 : 0
+            path.move(to: CGPoint(x: x0, y: atStart ? drop : 0))
+            path.addQuadCurve(to: CGPoint(x: first.x, y: first.y), control: CGPoint(x: x0, y: first.y))
             for j in run.indices.dropFirst() {
                 let a = run[j - 1], b = run[j]
                 path.addQuadCurve(to: CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), control: a)
             }
             path.addLine(to: last)
-            path.addLine(to: CGPoint(x: x1, y: last.y))
-            path.addLine(to: CGPoint(x: x1, y: 0))
+            path.addQuadCurve(to: CGPoint(x: x1, y: atEnd ? drop : 0), control: CGPoint(x: x1, y: last.y))
+            path.addLine(to: CGPoint(x: x0, y: atStart ? drop : 0))
             path.closeSubpath()
         }
 
@@ -132,7 +146,7 @@ final class SnowPile {
         let n = heights.count
         for b in 0..<n {
             var sum: CGFloat = 0, count: CGFloat = 0
-            for i in max(0, b - 3)...min(n - 1, b + 3) { sum += heights[i]; count += 1 }
+            for i in max(0, b - 4)...min(n - 1, b + 4) { sum += heights[i]; count += 1 }
             let h = visible[b] ? baseHeight + sum / count : 0
             if h > 0.3 {
                 run.append(CGPoint(x: (CGFloat(b) + 0.5) * binWidth, y: h))
@@ -142,5 +156,6 @@ final class SnowPile {
         }
         flush()
         node.path = path.isEmpty ? nil : path
+        shadow.path = node.path
     }
 }
