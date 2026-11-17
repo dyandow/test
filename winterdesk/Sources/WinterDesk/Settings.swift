@@ -101,6 +101,18 @@ final class Settings {
         get { bool("showSled", true) }
         set { defaults.set(newValue, forKey: "showSled") }
     }
+    var santaFlies: Bool {
+        get { bool("santaFlies", true) }
+        set { defaults.set(newValue, forKey: "santaFlies") }
+    }
+    var santaPresents: Bool {
+        get { bool("santaPresents", true) }
+        set { defaults.set(newValue, forKey: "santaPresents") }
+    }
+    var snowmanStyle: SnowmanStyle {
+        get { SnowmanStyle(dictionary: defaults.dictionary(forKey: "snowmanStyle") as? [String: String] ?? [:]) }
+        set { defaults.set(newValue.dictionary, forKey: "snowmanStyle") }
+    }
     var showTree: Bool {
         get { bool("showTree", true) }
         set { defaults.set(newValue, forKey: "showTree") }

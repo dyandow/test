@@ -5,7 +5,7 @@ import SpriteKit
 /// the sled and the snowmen.
 @MainActor
 final class Body {
-    enum Kind { case sled, snowman }
+    enum Kind { case sled, snowman, present }
     enum Support: Equatable {
         case ground
         case window(CGWindowID)
@@ -33,6 +33,8 @@ final class Body {
     var gentleLanding = false
     /// For snowmen: the snowman this body moves.
     var snowman: Snowman?
+    /// For presents: the present this body moves.
+    var present: Present?
 
     init(kind: Kind, node: SKNode, halfWidth: CGFloat) {
         self.kind = kind

@@ -110,4 +110,17 @@ final class ChristmasTree {
     }
 
     func clearLights() { lights.removeAllChildren() }
+
+    /// Hangs a few lights at random spots on the branches.
+    func addRandomLights(_ count: Int) {
+        var added = 0, tries = 0
+        while added < count && tries < 200 {
+            tries += 1
+            let p = CGPoint(x: .random(in: -50...50), y: .random(in: 18...120))
+            guard tiers.contains(where: { $0.contains(p) }) else { continue }
+            addLight(at: p, colorIndex: nextColor, animate: true)
+            nextColor = (nextColor + 1) % Self.palette.count
+            added += 1
+        }
+    }
 }

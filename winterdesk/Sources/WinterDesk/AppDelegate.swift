@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let topInset = frame.maxY - screen.visibleFrame.maxY
         let s = WinterScene(size: frame.size, groundY: groundY, topInset: topInset)
         s.onMenuRequest = { [weak self] in self?.showMenuAtPointer() }
+        s.onStyleSnowman = { [weak self] man in self?.styler.show(for: man) }
         view.presentScene(s)
         panel.contentView = view
         panel.orderFrontRegardless()
@@ -136,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Menu bar icon and controls window
 
     private let controls = ControlsWindow()
+    private let styler = SnowmanStyler()
 
     private func buildMenu() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -158,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.shakeSnow = { [weak self] in self?.scene?.shakeAllWindows() }
         m.clearLights = { [weak self] in self?.scene?.clearTreeLights() }
         m.buildSnowman = { [weak self] in self?.scene?.dropSnowman() }
+        m.sendSanta = { [weak self] in self?.scene?.sendSanta() }
     }
 
     @objc private func openControls() { controls.show() }

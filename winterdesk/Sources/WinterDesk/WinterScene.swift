@@ -45,6 +45,11 @@ final class WinterScene: SKScene {
     private var windowByID: [CGWindowID: TrackedWindow] = [:]
     private let sled = Sled()
     private var snowmen: [Snowman] = []
+    private var presents: [Present] = []
+    private let santa = Santa()
+    private var santaCountdown: TimeInterval = 45
+    /// Clicking a finished snowman asks the app to show the dress-up window.
+    var onStyleSnowman: ((Snowman) -> Void)?
     private var rollingBall: SKShapeNode?
     private var rollingRadius: CGFloat = 0
     /// Right-clicking the tree opens the app menu.
@@ -61,7 +66,7 @@ final class WinterScene: SKScene {
         case tree(grab: CGPoint, start: CGPoint, moved: Bool)
         case newLine(preview: SKShapeNode)
         case lineEnd(TramLine)
-        case body(Body)
+        case body(Body, start: CGPoint, moved: Bool)
     }
 
     private static let maxFalling = 1400
@@ -108,6 +113,9 @@ final class WinterScene: SKScene {
         sled.body.localX = 140
         props.addChild(sled.node)
 
+        santa.node.zPosition = 26
+        props.addChild(santa.node)
+
         station.node.position = CGPoint(x: size.width / 2, y: size.height - topInset - 34)
         station.node.zPosition = 27
         props.addChild(station.node)
@@ -134,6 +142,11 @@ final class WinterScene: SKScene {
         train.node.isHidden = !settings.showTrain
         tree.node.isHidden = !settings.showTree
         sled.node.isHidden = !settings.showSled
+        if !settings.santaFlies { santa.stop() }
+        if !settings.santaPresents {
+            presents.forEach { $0.node.removeFromParent(); $0.body.present = nil }
+            presents.removeAll()
+        }
         if !settings.showSnowmen {
             snowmen.forEach { $0.node.removeFromParent(); $0.body.snowman = nil }
             snowmen.removeAll()
@@ -173,6 +186,7 @@ final class WinterScene: SKScene {
         if tree.hitTest(p) { return true }
         if settings.showSled && sled.body.hitTest(p) { return true }
         if settings.showSnowmen && snowmen.contains(where: { $0.body.hitTest(p) }) { return true }
+        if presents.contains(where: { $0.body.hitTest(p) }) { return true }
         if train.hitTest(p) { return true }
         return false
     }
@@ -203,6 +217,8 @@ final class WinterScene: SKScene {
         if settings.showTramStation { for line in tramLines { line.step(dt) } }
         if settings.showSled { stepBody(sled.body, CGFloat(dt)) }
         if settings.showSnowmen { for man in snowmen { stepBody(man.body, CGFloat(dt)) } }
+        for gift in presents { stepBody(gift.body, CGFloat(dt)) }
+        stepSanta(dt)
         if tramLines.contains(where: { $0.finished }) {
             tramLines.removeAll { $0.finished }
             saveLines()
@@ -583,8 +599,7 @@ final class WinterScene: SKScene {
             b.lastDragPoint = b.node.position
             b.lastDragTime = event.timestamp
             b.dragVelocity = .zero
-            if b.kind == .snowman { b.support = nil }
-            drag = .body(b)
+            drag = .body(b, start: p, moved: false)
         } else if tree.hitTest(p) {
             drag = .tree(grab: CGPoint(x: tree.node.position.x - p.x, y: tree.node.position.y - p.y),
                          start: p, moved: false)
@@ -608,8 +623,13 @@ final class WinterScene: SKScene {
             preview.path = TramLine.previewPath(from: station.anchor, to: p)
         case .lineEnd(let line):
             line.setEnd(clamp(p))
-        case .body(let b):
-            dragBody(b, to: p, time: event.timestamp)
+        case .body(let b, let start, var moved):
+            if !moved && hypot(p.x - start.x, p.y - start.y) > 4 {
+                moved = true
+                if b.kind != .sled { b.support = nil }
+                drag = .body(b, start: start, moved: true)
+            }
+            if moved { dragBody(b, to: p, time: event.timestamp) }
         }
     }
 
@@ -636,8 +656,15 @@ final class WinterScene: SKScene {
         case .lineEnd(let line):
             hook(line)
             saveLines()
-        case .body(let b):
-            releaseBody(b)
+        case .body(let b, _, let moved):
+            if moved {
+                releaseBody(b)
+            } else {
+                // A plain click: dress up a snowman, open a present.
+                b.dragging = false
+                if let man = b.snowman, man.isComplete { onStyleSnowman?(man) }
+                if let gift = b.present { openPresent(gift) }
+            }
         }
     }
 
@@ -721,7 +748,7 @@ final class WinterScene: SKScene {
                                             && abs($0.node.position.x - x) < $0.baseRadius + r + 12 }) {
             man.add(radius: r)
         } else {
-            let man = Snowman(at: CGPoint(x: x, y: groundY + ground.surface(atLocalX: x) - 3))
+            let man = Snowman(at: CGPoint(x: x, y: groundY + ground.surface(atLocalX: x) - 3), style: settings.snowmanStyle)
             man.node.zPosition = 34
             props.addChild(man.node)
             man.add(radius: r)
@@ -735,6 +762,7 @@ final class WinterScene: SKScene {
 
     private func draggableBody(at p: CGPoint) -> Body? {
         if settings.showSnowmen, let man = snowmen.last(where: { $0.body.hitTest(p) }) { return man.body }
+        if let gift = presents.last(where: { $0.body.hitTest(p) }) { return gift.body }
         if settings.showSled, sled.body.hitTest(p) { return sled.body }
         return nil
     }
@@ -813,7 +841,7 @@ final class WinterScene: SKScene {
                 p.x = b.localX
             }
             // Sliding friction: a sled glides on a window top, a bit less on snow; snowmen don't slide.
-            let friction: CGFloat = b.kind == .snowman ? 12 : (s == .ground ? 1.3 : 0.55)
+            let friction: CGFloat = b.kind == .sled ? (s == .ground ? 1.3 : 0.55) : 12
             b.velocity.dx *= exp(-friction * dt)
             if abs(b.velocity.dx) < 4 { b.velocity.dx = 0 }
             if p.x < b.halfWidth || p.x > size.width - b.halfWidth {
@@ -842,6 +870,20 @@ final class WinterScene: SKScene {
                 b.velocity.dx = -b.velocity.dx * 0.5
             }
             b.highestPoint = max(b.highestPoint, p.y)
+            // A falling snowball (or partial snowman) that comes down on another one stacks on top.
+            if b.kind == .snowman, b.velocity.dy <= 0, let me = b.snowman {
+                for other in snowmen where other !== me && !other.body.dragging && other.body.support != nil
+                    && other.radii.count + me.radii.count <= 3 {
+                    let topY = other.node.position.y + other.stackHeight
+                    if abs(p.x - other.node.position.x) < (other.radii.last ?? 10) + 10, p0.y >= topY - 6, p.y <= topY + 4,
+                       other.absorb(me) {
+                        me.node.removeFromParent()
+                        me.body.snowman = nil
+                        snowmen.removeAll { $0 === me }
+                        return
+                    }
+                }
+            }
             if b.velocity.dy <= 0 {
                 let (s, top) = supportBelow(x: p.x, y: p0.y)
                 if p.y <= top {
@@ -866,7 +908,7 @@ final class WinterScene: SKScene {
         b.gentleLanding = false
         setSupport(b, s, x: p.x)
         b.velocity.dy = 0
-        b.velocity.dx = b.kind == .snowman ? 0 : b.velocity.dx * 0.85
+        b.velocity.dx = b.kind == .sled ? b.velocity.dx * 0.85 : 0
         b.node.position = p
         b.node.removeAction(forKey: "squash")
         b.node.run(.sequence([.scaleY(to: 0.88, duration: 0.06), .scaleY(to: 1, duration: 0.12)]), withKey: "squash")
@@ -903,7 +945,7 @@ final class WinterScene: SKScene {
             b.velocity = CGVector(dx: v.dx, dy: 0)
         } else {
             liftOff(b)
-            b.velocity = b.kind == .snowman ? CGVector(dx: v.dx * 0.3, dy: max(-300, min(300, v.dy * 0.3))) : v
+            b.velocity = b.kind == .sled ? v : CGVector(dx: v.dx * 0.75, dy: v.dy * 0.75)
         }
     }
 
@@ -944,7 +986,7 @@ final class WinterScene: SKScene {
         guard settings.showSnowmen, !fullScreen else { return }
         let target = tracker.windows.first(where: { $0.frame.maxY < size.height - topInset - 60 })
         let x = target.map { $0.frame.minX + $0.frame.width * .random(in: 0.25...0.75) } ?? .random(in: size.width * 0.3...size.width * 0.7)
-        let man = Snowman(at: CGPoint(x: x, y: size.height - topInset - 70))
+        let man = Snowman(at: CGPoint(x: x, y: size.height - topInset - 70), style: settings.snowmanStyle)
         man.node.zPosition = 34
         props.addChild(man.node)
         man.add(radius: 19, chime: false)
@@ -954,6 +996,118 @@ final class WinterScene: SKScene {
         man.body.gentleLanding = true
         man.body.highestPoint = man.node.position.y
         snowmen.append(man)
+    }
+
+    // MARK: - Santa and presents
+
+    /// "Send Santa" from the settings window.
+    func sendSanta() {
+        guard settings.santaFlies, !santa.active else { return }
+        santaCountdown = 0
+    }
+
+    private func stepSanta(_ dt: TimeInterval) {
+        if santa.active {
+            santa.step(dt, clock: clock, width: size.width) { [weak self] p in self?.sparkle(at: p) }
+            if settings.santaPresents, !santa.droppedPresent {
+                let targetX = settings.showTree ? tree.node.position.x : size.width / 2
+                if abs(santa.sleighPoint.x - targetX) < 24 {
+                    santa.droppedPresent = true
+                    dropPresent(at: santa.sleighPoint)
+                }
+            }
+            if !santa.active { santaCountdown = .random(in: 150...300) }
+            return
+        }
+        guard settings.santaFlies, !fullScreen else { return }
+        santaCountdown -= dt
+        if santaCountdown <= 0 {
+            santa.start(width: size.width, y: size.height - topInset - .random(in: 110...230))
+        }
+    }
+
+    private func sparkle(at p: CGPoint) {
+        let s = SKSpriteNode(texture: Textures.softDot, size: CGSize(width: 7, height: 7))
+        s.color = Art.color(1, 0.88, 0.5)
+        s.colorBlendFactor = 1
+        s.position = p
+        s.zPosition = 25
+        props.addChild(s)
+        s.run(.sequence([.group([.moveBy(x: 0, y: -24, duration: 0.9), .fadeOut(withDuration: 0.9), .scale(to: 0.3, duration: 0.9)]),
+                         .removeFromParent()]))
+    }
+
+    private func dropPresent(at p: CGPoint) {
+        let gift = Present()
+        gift.node.position = p
+        gift.node.zPosition = 33
+        props.addChild(gift.node)
+        gift.body.support = nil
+        gift.body.highestPoint = p.y
+        gift.body.velocity = CGVector(dx: santa.direction * 40, dy: 0)
+        presents.append(gift)
+        // Keep it tidy: at most three presents waiting.
+        if presents.count > 3 {
+            let old = presents.removeFirst()
+            old.body.present = nil
+            old.node.run(.sequence([.group([.fadeOut(withDuration: 0.4), .scale(to: 0.2, duration: 0.4)]), .removeFromParent()]))
+        }
+    }
+
+    private func confetti(at p: CGPoint) {
+        let colors = [Art.color(1, 0.3, 0.35), Art.color(1, 0.8, 0.25), Art.color(0.35, 0.7, 1), Art.color(0.45, 0.95, 0.5),
+                      Art.color(1, 0.55, 0.85), .white]
+        for _ in 0..<60 {
+            let c = Art.box(CGRect(x: -2.5, y: -1.5, width: 5, height: 3), colors.randomElement()!, radius: 0.5, outline: false)
+            c.position = p
+            c.zPosition = 41
+            props.addChild(c)
+            let up = SKAction.moveBy(x: .random(in: -90...90), y: .random(in: 60...170), duration: 0.45)
+            up.timingMode = .easeOut
+            let down = SKAction.moveBy(x: .random(in: -40...40), y: -.random(in: 160...260), duration: 1.1)
+            down.timingMode = .easeIn
+            c.run(.sequence([.group([.sequence([up, down]), .rotate(byAngle: .random(in: -12...12), duration: 1.55),
+                                     .sequence([.wait(forDuration: 1.0), .fadeOut(withDuration: 0.55)])]),
+                             .removeFromParent()]))
+        }
+    }
+
+    /// Opening a present: confetti and a little surprise.
+    private func openPresent(_ gift: Present) {
+        let p = gift.node.position
+        gift.node.removeFromParent()
+        gift.body.present = nil
+        presents.removeAll { $0 === gift }
+        confetti(at: CGPoint(x: p.x, y: p.y + 12))
+        NSSound(named: NSSound.Name("Pop"))?.play()
+        var choices = [0]
+        if settings.showSnowmen { choices.append(1) }
+        if settings.showTree { choices.append(2) }
+        switch choices.randomElement()! {
+        case 1:
+            // A dressed-up snowman pops out
+            let man = Snowman(at: CGPoint(x: p.x, y: p.y + 4), style: .random())
+            man.node.zPosition = 34
+            props.addChild(man.node)
+            man.add(radius: 17, chime: false)
+            man.add(radius: 13, chime: false)
+            man.add(radius: 9.5, chime: true)
+            man.body.support = nil
+            man.body.gentleLanding = true
+            man.body.highestPoint = man.node.position.y
+            man.body.velocity = CGVector(dx: 0, dy: 520)
+            snowmen.append(man)
+        case 2:
+            // The tree gets a fresh string of lights
+            tree.addRandomLights(8)
+            saveTree()
+        default:
+            // A fountain of snow
+            for _ in 0..<180 {
+                spawnThrown(at: CGPoint(x: p.x + .random(in: -6...6), y: p.y + 14),
+                            vx: .random(in: -170...170), vy: .random(in: 280...640))
+            }
+        }
     }
 
     // MARK: - Helpers

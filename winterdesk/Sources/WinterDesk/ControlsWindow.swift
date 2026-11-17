@@ -18,6 +18,7 @@ final class ControlsModel: ObservableObject {
     var shakeSnow: () -> Void = {}
     var clearLights: () -> Void = {}
     var buildSnowman: () -> Void = {}
+    var sendSanta: () -> Void = {}
 
     @Published var backdrop: Backdrop { didSet { s.backdrop = backdrop; applyBackdrop() } }
     @Published var snow: SnowChoice {
@@ -38,6 +39,8 @@ final class ControlsModel: ObservableObject {
     @Published var showTree: Bool { didSet { s.showTree = showTree; applyScene() } }
     @Published var showSnowmen: Bool { didSet { s.showSnowmen = showSnowmen; applyScene() } }
     @Published var showSled: Bool { didSet { s.showSled = showSled; applyScene() } }
+    @Published var santaFlies: Bool { didSet { s.santaFlies = santaFlies; applyScene() } }
+    @Published var santaPresents: Bool { didSet { s.santaPresents = santaPresents; applyScene() } }
     @Published var showTramStation: Bool { didSet { s.showTramStation = showTramStation; applyScene() } }
     @Published var fullScreenMode: FullScreenMode { didSet { s.fullScreenMode = fullScreenMode; applyScene() } }
     @Published var openAtLogin: Bool {
@@ -70,6 +73,8 @@ final class ControlsModel: ObservableObject {
         showTramStation = s.showTramStation
         showSnowmen = s.showSnowmen
         showSled = s.showSled
+        santaFlies = s.santaFlies
+        santaPresents = s.santaPresents
         fullScreenMode = s.fullScreenMode
         openAtLogin = SMAppService.mainApp.status == .enabled
     }
@@ -100,8 +105,11 @@ struct ControlsView: View {
                 Toggle("Wedding train", isOn: $model.weddingTrain)
                 Toggle("Christmas tree", isOn: $model.showTree)
                 Toggle("Tram station", isOn: $model.showTramStation)
-                Toggle("Snowmen (hold ⌥ Option, sweep along the bottom of the screen)", isOn: $model.showSnowmen)
+                Toggle("Snowmen (hold ⌥ Option and sweep the bottom to roll snowballs)", isOn: $model.showSnowmen)
                 Toggle("Sled", isOn: $model.showSled)
+                Toggle("Santa flies by", isOn: $model.santaFlies)
+                Toggle("Santa drops presents", isOn: $model.santaPresents)
+                    .disabled(!model.santaFlies)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -112,6 +120,7 @@ struct ControlsView: View {
                 HStack(spacing: 8) {
                     Button("Reel In Trams") { model.reelInTrams() }
                     Button("Clear Lights") { model.clearLights() }
+                    Button("Send Santa") { model.sendSanta() }
                 }
             }
             .controlSize(.small)
