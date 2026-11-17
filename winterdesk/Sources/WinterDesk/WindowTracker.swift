@@ -113,6 +113,6 @@ final class WindowTracker {
                 lastDY = dy
             }
         }
-        return travel > 160 && max(reversalsX, reversalsY) >= 3
+        return travel > 110 && max(reversalsX, reversalsY) >= 2
     }
 }

@@ -16,8 +16,21 @@ final class SnowPile {
     var dirty = true
     let node = SKShapeNode()
     private let shadow = SKShapeNode()
-    /// How far the snow hangs over each end (window piles only).
-    private var overhang: CGFloat { taperEdges ? 3 : 0 }
+    /// Window corners are rounded; the snow drapes down around them.
+    var cornerRadius: CGFloat = 0
+
+    /// How far below the window's top edge the surface sits at this column (the rounded corners).
+    func baseline(_ b: Int) -> CGFloat {
+        guard cornerRadius > 0 else { return 0 }
+        let x = (CGFloat(b) + 0.5) * binWidth
+        let d = min(x, width - x)
+        guard d < cornerRadius else { return 0 }
+        let t = cornerRadius - d
+        return -(cornerRadius - (cornerRadius * cornerRadius - t * t).squareRoot())
+    }
+
+    /// Top of the snow at this column, relative to the window's top edge.
+    func surfaceOffset(_ b: Int) -> CGFloat { baseline(b) + heights[b] }
 
     var binCount: Int { heights.count }
 
@@ -71,7 +84,7 @@ final class SnowPile {
     func cap(_ b: Int) -> CGFloat {
         guard taperEdges else { return maxHeight }
         let fromEdge = CGFloat(min(b, heights.count - 1 - b)) * binWidth
-        return min(maxHeight, 3 + fromEdge * 0.8)
+        return min(maxHeight, 4 + fromEdge * 0.7)
     }
 
     /// Spreads each landing flake over a few neighbouring columns so piles build up evenly.
@@ -114,6 +127,11 @@ final class SnowPile {
         if changed { dirty = true }
     }
 
+    private func baseAt(_ x: CGFloat) -> CGFloat {
+        guard cornerRadius > 0 else { return 0 }
+        return baseline(min(max(Int(x / binWidth), 0), heights.count - 1))
+    }
+
     func redrawIfNeeded() {
         guard dirty else { return }
         dirty = false
@@ -123,22 +141,24 @@ final class SnowPile {
         func flush() {
             defer { run.removeAll(keepingCapacity: true) }
             guard let first = run.first, let last = run.last else { return }
-            var x0 = first.x - binWidth / 2
-            var x1 = min(width, last.x + binWidth / 2)
-            // Rounded ends that hang slightly over the window's edges.
-            let atStart = x0 <= binWidth, atEnd = x1 >= width - binWidth
-            if atStart { x0 = -overhang }
-            if atEnd { x1 = width + overhang }
-            let drop: CGFloat = taperEdges ? -2.5 : 0
-            path.move(to: CGPoint(x: x0, y: atStart ? drop : 0))
+            let x0 = max(0, first.x - binWidth / 2)
+            let x1 = min(width, last.x + binWidth / 2)
+            let b0 = baseAt(x0), b1 = baseAt(x1)
+            path.move(to: CGPoint(x: x0, y: b0))
             path.addQuadCurve(to: CGPoint(x: first.x, y: first.y), control: CGPoint(x: x0, y: first.y))
             for j in run.indices.dropFirst() {
                 let a = run[j - 1], b = run[j]
                 path.addQuadCurve(to: CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2), control: a)
             }
             path.addLine(to: last)
-            path.addQuadCurve(to: CGPoint(x: x1, y: atEnd ? drop : 0), control: CGPoint(x: x1, y: last.y))
-            path.addLine(to: CGPoint(x: x0, y: atStart ? drop : 0))
+            path.addQuadCurve(to: CGPoint(x: x1, y: b1), control: CGPoint(x: x1, y: last.y))
+            // back along the window's (rounded) top edge
+            var x = x1
+            while x > x0 {
+                path.addLine(to: CGPoint(x: x, y: baseAt(x)))
+                x -= binWidth
+            }
+            path.addLine(to: CGPoint(x: x0, y: b0))
             path.closeSubpath()
         }
 
@@ -149,7 +169,7 @@ final class SnowPile {
             for i in max(0, b - 4)...min(n - 1, b + 4) { sum += heights[i]; count += 1 }
             let h = visible[b] ? baseHeight + sum / count : 0
             if h > 0.3 {
-                run.append(CGPoint(x: (CGFloat(b) + 0.5) * binWidth, y: h))
+                run.append(CGPoint(x: (CGFloat(b) + 0.5) * binWidth, y: baseline(b) + h))
             } else {
                 flush()
             }

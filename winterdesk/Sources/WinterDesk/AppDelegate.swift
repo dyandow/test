@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(screensChanged),
                                                name: NSApplication.didChangeScreenParametersNotification,
                                                object: nil)
-        let timer = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(pollMouse),
+        let timer = Timer(timeInterval: 1.0 / 60, target: self, selector: #selector(pollMouse),
                           userInfo: nil, repeats: true)
         RunLoop.main.add(timer, forMode: .common)
         mouseTimer = timer
@@ -111,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func pollMouse() {
         guard let panel = overlay, let scene = scene else { return }
         spaceCheckTick += 1
-        if spaceCheckTick % 5 == 0 {
+        if spaceCheckTick % 10 == 0 {
             if let full = SpaceInfo.mainDisplayIsFullScreen() {
                 // Reliable answer straight from the window server.
                 scene.trustsSystemFullScreen = true
@@ -128,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Read the keyboard system-wide, so holding Option works whichever app is in front.
         let optionHeld = CGEventSource.flagsState(.combinedSessionState).contains(.maskAlternate)
         scene.optionSweep(at: optionHeld && panel.frame.contains(m) ? p : nil)
+        if panel.frame.contains(m) { scene.brush(at: p) }
         let hit = panel.frame.contains(m) && scene.isInteractive(at: p)
         if panel.ignoresMouseEvents == hit { panel.ignoresMouseEvents = !hit }
     }

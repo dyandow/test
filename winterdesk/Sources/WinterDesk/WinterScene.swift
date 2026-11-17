@@ -322,7 +322,7 @@ final class WinterScene: SKScene {
             guard p.x >= w.frame.minX, p.x < w.frame.maxX,
                   let pile = windowPiles[w.id], !pile.node.isHidden,
                   let b = pile.bin(atLocalX: p.x - w.frame.minX), pile.isVisible(b) else { continue }
-            let surface = w.frame.maxY + pile.heights[b]
+            let surface = w.frame.maxY + pile.surfaceOffset(b)
             if p0.y >= surface - 0.5 && p.y < surface {
                 pile.deposit(bin: b, amount: amount)
                 return true
@@ -364,12 +364,14 @@ final class WinterScene: SKScene {
             } else {
                 pile = SnowPile(width: w.frame.width, binWidth: 4, maxHeight: 20, baseHeight: 0, taperEdges: true)
                 pile.node.zPosition = 10
+                pile.cornerRadius = 12
                 props.addChild(pile.node)
                 windowPiles[w.id] = pile
             }
             if abs(pile.width - w.frame.width) > 0.5 { pile.resize(width: w.frame.width) }
             pile.node.position = CGPoint(x: w.frame.minX, y: w.frame.maxY)
             pile.node.isHidden = false
+            shedIfMovingFast(pile, window: w)
             pileLastSeen[w.id] = clock
         }
         // Windows that vanished (minimized, other Space, closed) keep their snow for a while.
@@ -384,6 +386,60 @@ final class WinterScene: SKScene {
             pileLastSeen[id] = nil
         }
         if changed { updateOcclusion() }
+    }
+
+    /// Loose snow: a window moved quickly leaves some of its snow behind; yanked down, it loses more.
+    private func shedIfMovingFast(_ pile: SnowPile, window w: TrackedWindow) {
+        let v = tracker.velocities[w.id] ?? .zero
+        let speed = max(abs(v.dx) - 600, 0) / 5000 + max(-v.dy - 500, 0) / 2500
+        guard speed > 0 else { return }
+        let fraction = min(0.3, speed)
+        var budget = 40
+        for b in stride(from: Int.random(in: 0..<3), to: pile.binCount, by: 3) where pile.heights[b] > 0.6 && pile.isVisible(b) {
+            let lost = pile.heights[b] * fraction
+            pile.heights[b] -= lost
+            if budget > 0 && Double.random(in: 0..<1) < Double(lost) * 0.6 {
+                budget -= 1
+                spawnThrown(at: CGPoint(x: w.frame.minX + (CGFloat(b) + 0.5) * pile.binWidth,
+                                        y: w.frame.maxY + pile.surfaceOffset(b)),
+                            vx: -v.dx * 0.15 + .random(in: -40...40), vy: .random(in: 0...60))
+            }
+        }
+        pile.dirty = true
+    }
+
+    /// Sweeping the pointer quickly across the snow on a window brushes it off.
+    private var lastBrushPoint: CGPoint?
+    private var lastBrushTime: TimeInterval = 0
+
+    func brush(at p: CGPoint) {
+        defer { lastBrushPoint = p; lastBrushTime = clock }
+        guard settings.snowOnWindows, !fullScreen, drag == nil, let last = lastBrushPoint else { return }
+        let dt = max(clock - lastBrushTime, 1.0 / 120)
+        let vx = (p.x - last.x) / CGFloat(dt), vy = (p.y - last.y) / CGFloat(dt)
+        guard hypot(vx, vy) > 350 else { return }
+        for (i, w) in tracker.windows.enumerated() where p.x >= w.frame.minX - 10 && p.x <= w.frame.maxX + 10 {
+            guard let pile = windowPiles[w.id], !pile.node.isHidden else { continue }
+            let top = w.frame.maxY
+            guard p.y >= top - 6, p.y <= top + pile.maxHeight + 14 else { continue }
+            guard windowTopVisible(index: i, x: min(max(p.x, w.frame.minX), w.frame.maxX)) else { continue }
+            // sweep along the path the pointer took this tick
+            let lo = min(last.x, p.x) - 16, hi = max(last.x, p.x) + 16
+            var removed: CGFloat = 0
+            for b in 0..<pile.binCount {
+                let x = w.frame.minX + (CGFloat(b) + 0.5) * pile.binWidth
+                guard x >= lo, x <= hi, pile.heights[b] > 0.2 else { continue }
+                let take = pile.heights[b] * 0.85
+                pile.heights[b] -= take
+                removed += take
+                if Double.random(in: 0..<1) < Double(take) * 0.45 {
+                    spawnThrown(at: CGPoint(x: x, y: top + pile.surfaceOffset(b) + .random(in: 0...take)),
+                                vx: vx * 0.35 + .random(in: -50...50), vy: .random(in: 40...170))
+                }
+            }
+            if removed > 0 { pile.dirty = true }
+            break
+        }
     }
 
     /// Hide the parts of each window's snow that are covered by windows in front of it.
@@ -692,7 +748,7 @@ final class WinterScene: SKScene {
     private func pileHeight(_ id: CGWindowID, atSceneX x: CGFloat) -> CGFloat {
         guard let w = windowByID[id], let pile = windowPiles[id], !pile.node.isHidden,
               let b = pile.bin(atLocalX: x - w.frame.minX), pile.isVisible(b) else { return 0 }
-        return pile.heights[b]
+        return pile.surfaceOffset(b)
     }
 
     /// Top of a surface at x, or nil if x is off its edge.
