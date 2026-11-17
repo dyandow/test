@@ -22,7 +22,8 @@ func makeSnowball(radius r: CGFloat) -> SKShapeNode {
 @MainActor
 final class Snowman {
     let node = SKNode()
-    private let decor = SKNode()
+    private let decor = SKNode()      // face, buttons, outfit, hat: in front of the snowballs
+    private let armsNode = SKNode()   // arms: behind the snowballs
     private(set) var radii: [CGFloat] = []
     private var top: CGFloat = 0
     private var centers: [CGFloat] = []
@@ -42,7 +43,10 @@ final class Snowman {
     init(at p: CGPoint, style: SnowmanStyle) {
         node.position = p
         self.style = style
+        decor.zPosition = 1
+        armsNode.zPosition = -1
         node.addChild(decor)
+        node.addChild(armsNode)
     }
 
     /// Adds a ball on top. Returns true when that completes the snowman.
@@ -96,15 +100,14 @@ final class Snowman {
     private func redrawDecor() {
         decor.removeAllChildren()
         decor.removeAllActions()
+        armsNode.removeAllChildren()
         guard isComplete else { return }
         let hy = centers[2], R = radii[2]
         let my = centers[1], mr = radii[1]
         let add: (SKNode) -> Void = { self.decor.addChild($0) }
 
         // Arms go behind the body
-        let arms = SKNode()
-        arms.zPosition = -1
-        decor.addChild(arms)
+        let arms = armsNode
         let brown = Art.color(0.36, 0.22, 0.12)
         func stickArm(_ side: CGFloat, up: Bool) -> SKNode {
             let arm = SKNode()
