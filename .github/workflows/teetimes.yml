@@ -9,6 +9,10 @@ on:
         description: "Test mode: ignore the 1:10 PM cutoff and send whatever is open now"
         type: boolean
         default: false
+      preview:
+        description: "Preview: list what matches right now in the log, without notifying"
+        type: boolean
+        default: false
 
 concurrency:
   group: teetimes
@@ -38,10 +42,11 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           BOOKER_URL: ${{ vars.BOOKER_URL }}
           TEST_MODE: ${{ inputs.test && '1' || '' }}
+          PREVIEW: ${{ inputs.preview && '1' || '' }}
         run: python -m teetimes.check
 
       - name: Save state
-        if: always() && !inputs.test
+        if: always() && !inputs.test && !inputs.preview
         uses: actions/cache/save@v4
         with:
           path: state.json

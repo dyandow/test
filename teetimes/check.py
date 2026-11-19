@@ -6,6 +6,7 @@ Env:  NTFY_TOPIC  (required to send; without it, alerts are only printed)
       DRY_RUN=1   print alerts instead of sending them
       TEST_MODE=1 ignore the time cutoff and past alerts, so whatever is open now gets sent
       BOOKER_URL  (optional) the confirmation page; adds "Book" buttons to alerts
+      PREVIEW=1   print everything that matches right now; send nothing, remember nothing
 """
 
 import json
@@ -77,6 +78,9 @@ def fetch_teeitup(course, day):
     data = http_get_json(url, headers={"x-be-alias": course["alias"], "Accept": "application/json"})
     if not isinstance(data, list):
         raise RuntimeError(f"Unexpected TeeItUp response for {day}: {str(data)[:300]}")
+    if os.environ.get("PREVIEW") == "1":
+        sample = next((tt for f in data for tt in f.get("teetimes", [])), None)
+        print(f"[preview] {course['name']} {day} sample tee time: {json.dumps(sample)[:1500]}")
     return data
 
 
@@ -180,10 +184,12 @@ def main():
     dry_run = os.environ.get("DRY_RUN") == "1" or not topic
     state_file = os.environ.get("STATE_FILE", "state.json")
     test_mode = os.environ.get("TEST_MODE") == "1"
+    preview = os.environ.get("PREVIEW") == "1"
+    dry_run = dry_run or preview
     if test_mode:
         config["latest_time"] = "23:59"
 
-    previously_seen = None if test_mode else load_state(state_file)
+    previously_seen = None if (test_mode or preview) else load_state(state_file)
     current = {}
     failures = 0
     checked_courses = set()
@@ -237,7 +243,7 @@ def main():
     else:
         print("No new tee times.")
 
-    if not test_mode:  # a test run must not change what the real watcher remembers
+    if not (test_mode or preview):  # test and preview runs must not change what the watcher remembers
         save_state(state_file, current.keys())
     # Fail the run only if nothing at all could be checked, so GitHub emails about real breakage.
     return 1 if failures and not checked_courses else 0

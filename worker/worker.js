@@ -3,6 +3,9 @@
 // GET  /?d=2026-10-10&t=07:40&s=4   -> confirmation page (players + PIN + Approve)
 // POST /                            -> checks the PIN, then starts the "Book tee time" GitHub workflow
 //
+// Cron trigger (Settings -> Trigger events -> Cron, e.g. */8 * * * *) -> starts the "Tee time watcher"
+// workflow on time; GitHub's own schedule is often delayed by hours.
+//
 // Settings (Cloudflare dashboard -> your worker -> Settings -> Variables and Secrets):
 //   BOOK_PIN       (secret) the code you type to approve a booking
 //   GITHUB_TOKEN   (secret) fine-grained token with "Actions: Read and write" on this repo only
@@ -13,6 +16,12 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{2}:\d{2}$/;
 
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(startWorkflow(env, 'teetimes.yml', {}).then(res => {
+      if (!res.ok) console.log(`Could not start the watcher: GitHub said ${res.status}`);
+    }));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'POST') return approve(request, env);
@@ -37,25 +46,26 @@ async function approve(request, env) {
     return page('Wrong PIN', `<p>Nothing was booked.</p><p><a href="/?d=${d}&t=${t}&s=${players}">Try again</a></p>`, 403);
   }
 
-  const res = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/book.yml/dispatches`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'teetime-booker',
-    },
-    body: JSON.stringify({
-      ref: env.GITHUB_BRANCH || 'main',
-      inputs: { date: d, time: t, players, practice: practice ? 'true' : 'false' },
-    }),
-  });
+  const res = await startWorkflow(env, 'book.yml', { date: d, time: t, players, practice: practice ? 'true' : 'false' });
   if (!res.ok) {
     return page('Could not start booking', `<p>GitHub said: ${res.status}. Check the worker's token settings.</p>`, 502);
   }
   return page(practice ? 'Practice run started' : 'Booking started',
     `<p>${pretty(d, t)} for ${players} player${players === '1' ? '' : 's'}.</p>
      <p>You'll get a notification in about a minute saying whether it ${practice ? 'reached the payment step' : 'was booked'}.</p>`);
+}
+
+function startWorkflow(env, workflow, inputs) {
+  return fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'teetime-watcher',
+    },
+    body: JSON.stringify({ ref: env.GITHUB_BRANCH || 'main', inputs }),
+  });
 }
 
 // Constant-time comparison so the PIN can't be guessed character by character.

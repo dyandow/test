@@ -26,6 +26,15 @@
       "booking_class": 49424,
       "booking_url": "https://foreupsoftware.com/index.php/booking/22528/11077#/teetimes",
       "booking_class_name": "Non-Cardholders"
+    },
+    {
+      "name": "Old Bridge (The Rose)",
+      "platform": "teeitup",
+      "alias": "old-bridge-golf-club-v2",
+      "facility_id": 18179,
+      "holes": 18,
+      "days_ahead": 10,
+      "booking_url": "https://old-bridge-golf-club-v2.book.teeitup.golf/?course=18179&holes=18"
     }
   ]
 }
